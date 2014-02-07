@@ -67,20 +67,6 @@ above) and it is copyright by:
   Copyright: © 2010 Kai Wasserbäch <debian@carbon-project.org>
 
 
-The following files were removed from the original tarball due to licensing
-issues (proprietary licence, undistributable) (#614390):
-
-  Utilities/cmlibarchive/build/windows/mvcpp.nt
-  Utilities/cmlibarchive/build/windows/vc71/libarchive.sln
-  Utilities/cmlibarchive/build/windows/vc71/libarchive.vcproj
-  Utilities/cmlibarchive/build/windows/vc80/libarchive.sln
-  Utilities/cmlibarchive/build/windows/vc80/libarchive.vcproj
-  Utilities/cmlibarchive/build/windows/vc80/libarchive_test/libarchive_test.vcproj
-  Utilities/cmlibarchive/build/windows/vc90/libarchive.sln
-  Utilities/cmlibarchive/build/windows/vc90/libarchive.vcproj
-  Utilities/cmlibarchive/build/windows/vc90/libarchive_test/libarchive_test.vcproj
-  Utilities/cmlibarchive/build/window/wccpp.nt
-
 Detailed copyright and licensing summary can be found below:
 
   Copyright: © 2002, 2005, 2007 Insight Consortium. All Rights Reserved.

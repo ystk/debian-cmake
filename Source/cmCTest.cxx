@@ -16,6 +16,7 @@
 #include "cmMakefile.h"
 #include "cmLocalGenerator.h"
 #include "cmGlobalGenerator.h"
+#include <cmsys/Base64.h>
 #include <cmsys/Directory.hxx>
 #include <cmsys/SystemInformation.hxx>
 #include "cmDynamicLoader.h"
@@ -31,9 +32,10 @@
 #include "cmCTestCoverageHandler.h"
 #include "cmCTestMemCheckHandler.h"
 #include "cmCTestScriptHandler.h"
+#include "cmCTestSubmitHandler.h"
 #include "cmCTestTestHandler.h"
 #include "cmCTestUpdateHandler.h"
-#include "cmCTestSubmitHandler.h"
+#include "cmCTestUploadHandler.h"
 
 #include "cmVersion.h"
 
@@ -46,7 +48,10 @@
 #include <float.h>
 #include <ctype.h>
 
-#include <memory> // auto_ptr
+#include <cmsys/auto_ptr.hxx>
+
+#include <cm_zlib.h>
+#include <cmsys/Base64.h>
 
 #if defined(__BEOS__) && !defined(__HAIKU__)
 #include <be/kernel/OS.h>   /* disable_debugger() API. */
@@ -304,8 +309,9 @@ cmCTest::cmCTest()
   this->ShowOnly               = false;
   this->RunConfigurationScript = false;
   this->UseHTTP10              = false;
+  this->PrintLabels            = false;
   this->CompressTestOutput     = true;
-  this->ComputedCompressOutput = false;
+  this->CompressMemCheckOutput = true;
   this->TestModel              = cmCTest::EXPERIMENTAL;
   this->MaxTestNameWidth       = 30;
   this->InteractiveDebugMode   = true;
@@ -322,6 +328,8 @@ cmCTest::cmCTest()
   this->SuppressUpdatingCTestConfiguration = false;
   this->DartVersion            = 1;
   this->OutputTestOutputOnTestFailure = false;
+  this->ComputedCompressTestOutput = false;
+  this->ComputedCompressMemCheckOutput = false;
   if(cmSystemTools::GetEnv("CTEST_OUTPUT_ON_FAILURE"))
     {
     this->OutputTestOutputOnTestFailure = true;
@@ -338,6 +346,7 @@ cmCTest::cmCTest()
   this->Parts[PartSubmit].SetName("Submit");
   this->Parts[PartNotes].SetName("Notes");
   this->Parts[PartExtraFiles].SetName("ExtraFiles");
+  this->Parts[PartUpload].SetName("Upload");
 
   // Fill the part name-to-id map.
   for(Part p = PartStart; p != PartCount; p = Part(p+1))
@@ -356,6 +365,7 @@ cmCTest::cmCTest()
   this->TestingHandlers["configure"] = new cmCTestConfigureHandler;
   this->TestingHandlers["memcheck"]  = new cmCTestMemCheckHandler;
   this->TestingHandlers["submit"]    = new cmCTestSubmitHandler;
+  this->TestingHandlers["upload"]    = new cmCTestUploadHandler;
 
   cmCTest::t_TestingHandlers::iterator it;
   for ( it = this->TestingHandlers.begin();
@@ -389,7 +399,7 @@ void cmCTest::SetParallelLevel(int level)
 //----------------------------------------------------------------------------
 bool cmCTest::ShouldCompressTestOutput()
 {
-  if(!this->ComputedCompressOutput)
+  if(!this->ComputedCompressTestOutput)
     {
     std::string cdashVersion = this->GetCDashVersion();
     //version >= 1.6?
@@ -398,9 +408,24 @@ bool cmCTest::ShouldCompressTestOutput()
       cmSystemTools::VersionCompare(cmSystemTools::OP_EQUAL,
       cdashVersion.c_str(), "1.6");
     this->CompressTestOutput &= cdashSupportsGzip;
-    this->ComputedCompressOutput = true;
+    this->ComputedCompressTestOutput = true;
     }
   return this->CompressTestOutput;
+}
+
+//----------------------------------------------------------------------------
+bool cmCTest::ShouldCompressMemCheckOutput()
+{
+  if(!this->ComputedCompressMemCheckOutput)
+    {
+    std::string cdashVersion = this->GetCDashVersion();
+
+    bool compressionSupported = cmSystemTools::VersionCompare(
+      cmSystemTools::OP_GREATER, cdashVersion.c_str(), "1.9.0");
+    this->CompressMemCheckOutput &= compressionSupported;
+    this->ComputedCompressMemCheckOutput = true;
+    }
+  return this->CompressMemCheckOutput;
 }
 
 //----------------------------------------------------------------------------
@@ -410,10 +435,18 @@ std::string cmCTest::GetCDashVersion()
   //First query the server.  If that fails, fall back to the local setting
   std::string response;
   std::string url = "http://";
-  url += this->GetCTestConfiguration("DropSite") + "/CDash/api/getversion.php";
-  
-  int res = cmCTest::HTTPRequest(url, cmCTest::HTTP_GET, response, "", "", 3);
-  
+  url += this->GetCTestConfiguration("DropSite");
+
+  std::string cdashUri = this->GetCTestConfiguration("DropLocation");
+  cdashUri = cdashUri.substr(0, cdashUri.find("/submit.php"));
+
+  int res = 1;
+  if ( ! cdashUri.empty() )
+  {
+    url += cdashUri + "/api/getversion.php";
+    res = cmCTest::HTTPRequest(url, cmCTest::HTTP_GET, response, "", "", 3);
+  }
+
   return res ? this->GetCTestConfiguration("CDashVersion") : response;
 #else
   return this->GetCTestConfiguration("CDashVersion");
@@ -476,7 +509,7 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
   cmake cm;
   cmGlobalGenerator gg;
   gg.SetCMakeInstance(&cm);
-  std::auto_ptr<cmLocalGenerator> lg(gg.CreateLocalGenerator());
+  cmsys::auto_ptr<cmLocalGenerator> lg(gg.CreateLocalGenerator());
   cmMakefile *mf = lg->GetMakefile();
   if ( !this->ReadCustomConfigurationFileTree(this->BinaryDir.c_str(), mf) )
     {
@@ -484,10 +517,6 @@ int cmCTest::Initialize(const char* binary_dir, cmCTestStartCommand* command)
       << std::endl);
     return 0;
     }
-
-  // call this so that the information is cached up front
-  // and not the first time EndTest is called.
-  this->ShouldCompressTestOutput();
 
   if ( this->ProduceXML )
     {
@@ -630,10 +659,26 @@ bool cmCTest::InitializeFromCommand(cmCTestStartCommand* command)
     }
 
   cmMakefile* mf = command->GetMakefile();
-  std::string fname = src_dir;
-  fname += "/CTestConfig.cmake";
-  cmSystemTools::ConvertToUnixSlashes(fname);
-  if ( cmSystemTools::FileExists(fname.c_str()) )
+  std::string fname;
+
+  std::string src_dir_fname = src_dir;
+  src_dir_fname += "/CTestConfig.cmake";
+  cmSystemTools::ConvertToUnixSlashes(src_dir_fname);
+
+  std::string bld_dir_fname = bld_dir;
+  bld_dir_fname += "/CTestConfig.cmake";
+  cmSystemTools::ConvertToUnixSlashes(bld_dir_fname);
+
+  if ( cmSystemTools::FileExists(bld_dir_fname.c_str()) )
+    {
+    fname = bld_dir_fname;
+    }
+  else if ( cmSystemTools::FileExists(src_dir_fname.c_str()) )
+    {
+    fname = src_dir_fname;
+    }
+
+  if ( !fname.empty() )
     {
     cmCTestLog(this, OUTPUT, "   Reading ctest configuration file: "
       << fname.c_str() << std::endl);
@@ -649,8 +694,12 @@ bool cmCTest::InitializeFromCommand(cmCTestStartCommand* command)
     }
   else
     {
-    cmCTestLog(this, WARNING, "Cannot locate CTest configuration: "
-      << fname.c_str() << std::endl);
+    cmCTestLog(this, WARNING,
+      "Cannot locate CTest configuration: in BuildDirectory: "
+      << bld_dir_fname.c_str() << std::endl);
+    cmCTestLog(this, WARNING,
+      "Cannot locate CTest configuration: in SourceDirectory: "
+      << src_dir_fname.c_str() << std::endl);
     }
 
   this->SetCTestConfigurationFromCMakeVariable(mf, "NightlyStartTime",
@@ -1169,7 +1218,7 @@ int cmCTest::RunMakeCommand(const char* command, std::string* output,
         if ( tick % tick_line_len == 0 && tick > 0 )
           {
           cmCTestLog(this, HANDLER_OUTPUT, "  Size: "
-            << int((output->size() / 1024.0) + 1) << "K" << std::endl
+            << int((double(output->size()) / 1024.0) + 1) << "K" << std::endl
             << "    " << std::flush);
           }
         }
@@ -1181,7 +1230,7 @@ int cmCTest::RunMakeCommand(const char* command, std::string* output,
       }
     }
   cmCTestLog(this, OUTPUT, " Size of output: "
-    << int(output->size() / 1024.0) << "K" << std::endl);
+    << int(double(output->size()) / 1024.0) << "K" << std::endl);
 
   cmsysProcess_WaitForExit(cp, 0);
 
@@ -1228,7 +1277,6 @@ int cmCTest::RunTest(std::vector<const char*> argv,
                      std::ostream* log, double testTimeOut,
                      std::vector<std::string>* environment)
 {
-  std::vector<std::string> origEnv;
   bool modifyEnv = (environment && environment->size()>0);
 
   // determine how much time we have
@@ -1285,9 +1333,11 @@ int cmCTest::RunTest(std::vector<const char*> argv,
       }
     std::string oldpath = cmSystemTools::GetCurrentWorkingDirectory();
 
+    cmsys::auto_ptr<cmSystemTools::SaveRestoreEnvironment> saveEnv;
     if (modifyEnv)
       {
-      origEnv = cmSystemTools::AppendEnv(environment);
+      saveEnv.reset(new cmSystemTools::SaveRestoreEnvironment);
+      cmSystemTools::AppendEnv(*environment);
       }
 
     *retVal = inst.Run(args, output);
@@ -1302,11 +1352,6 @@ int cmCTest::RunTest(std::vector<const char*> argv,
       "Internal cmCTest object used to run test." << std::endl
       <<  *output << std::endl);
 
-    if (modifyEnv)
-      {
-      cmSystemTools::RestoreEnv(origEnv);
-      }
-
     return cmsysProcess_State_Exited;
     }
   std::vector<char> tempOutput;
@@ -1315,9 +1360,11 @@ int cmCTest::RunTest(std::vector<const char*> argv,
     *output = "";
     }
 
+  cmsys::auto_ptr<cmSystemTools::SaveRestoreEnvironment> saveEnv;
   if (modifyEnv)
     {
-    origEnv = cmSystemTools::AppendEnv(environment);
+    saveEnv.reset(new cmSystemTools::SaveRestoreEnvironment);
+    cmSystemTools::AppendEnv(*environment);
     }
 
   cmsysProcess* cp = cmsysProcess_New();
@@ -1387,12 +1434,44 @@ int cmCTest::RunTest(std::vector<const char*> argv,
     }
   cmsysProcess_Delete(cp);
 
-  if (modifyEnv)
+  return result;
+}
+
+//----------------------------------------------------------------------
+std::string cmCTest::SafeBuildIdField(const std::string& value)
+{
+  std::string safevalue(value);
+
+  if (safevalue != "")
     {
-    cmSystemTools::RestoreEnv(origEnv);
+    // Disallow non-filename and non-space whitespace characters.
+    // If they occur, replace them with ""
+    //
+    const char *disallowed = "\\/:*?\"<>|\n\r\t\f\v";
+
+    if (safevalue.find_first_of(disallowed) != value.npos)
+      {
+      std::string::size_type i = 0;
+      std::string::size_type n = strlen(disallowed);
+      char replace[2];
+      replace[1] = 0;
+
+      for (i= 0; i<n; ++i)
+        {
+        replace[0] = disallowed[i];
+        cmSystemTools::ReplaceString(safevalue, replace, "");
+        }
+      }
+
+    safevalue = cmXMLSafe(safevalue).str();
     }
 
-  return result;
+  if (safevalue == "")
+    {
+    safevalue = "(empty)";
+    }
+
+  return safevalue;
 }
 
 //----------------------------------------------------------------------
@@ -1405,19 +1484,27 @@ void cmCTest::StartXML(std::ostream& ostr, bool append)
                " NightlStartTime was not set correctly." << std::endl);
     cmSystemTools::SetFatalErrorOccured();
     }
+
   // find out about the system
   cmsys::SystemInformation info;
   info.RunCPUCheck();
   info.RunOSCheck();
   info.RunMemoryCheck();
+
+  std::string buildname = cmCTest::SafeBuildIdField(
+    this->GetCTestConfiguration("BuildName"));
+  std::string stamp = cmCTest::SafeBuildIdField(
+    this->CurrentTag + "-" + this->GetTestModelString());
+  std::string site = cmCTest::SafeBuildIdField(
+    this->GetCTestConfiguration("Site"));
+
   ostr << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-       << "<Site BuildName=\"" << this->GetCTestConfiguration("BuildName")
-       << "\"\n\tBuildStamp=\"" << this->CurrentTag << "-"
-       << this->GetTestModelString() << "\"\n\tName=\""
-       << this->GetCTestConfiguration("Site") << "\"\n\tGenerator=\"ctest-"
-       << cmVersion::GetCMakeVersion()  << "\"\n"
+       << "<Site BuildName=\"" << buildname << "\"\n"
+       << "\tBuildStamp=\"" << stamp << "\"\n"
+       << "\tName=\"" << site << "\"\n"
+       << "\tGenerator=\"ctest-" << cmVersion::GetCMakeVersion() << "\"\n"
        << (append? "\tAppend=\"true\"\n":"")
-       << "\tCompilerName=\"" << this->GetCTestConfiguration("Compiler") 
+       << "\tCompilerName=\"" << this->GetCTestConfiguration("Compiler")
        << "\"\n"
 #ifdef _COMPILER_VERSION
        << "\tCompilerVersion=\"_COMPILER_VERSION\"\n"
@@ -1581,6 +1668,56 @@ int cmCTest::GenerateNotesFile(const char* cfiles)
 
   return this->GenerateNotesFile(files);
 }
+
+//----------------------------------------------------------------------
+std::string cmCTest::Base64GzipEncodeFile(std::string file)
+{
+  std::string tarFile = file + "_temp.tar.gz";
+  std::vector<cmStdString> files;
+  files.push_back(file);
+
+  if(!cmSystemTools::CreateTar(tarFile.c_str(), files, true, false, false))
+    {
+    cmCTestLog(this, ERROR_MESSAGE, "Error creating tar while "
+      "encoding file: " << file << std::endl);
+    return "";
+    }
+  std::string base64 = this->Base64EncodeFile(tarFile);
+  cmSystemTools::RemoveFile(tarFile.c_str());
+  return base64;
+}
+
+//----------------------------------------------------------------------
+std::string cmCTest::Base64EncodeFile(std::string file)
+{
+  long len = cmSystemTools::FileLength(file.c_str());
+  std::ifstream ifs(file.c_str(), std::ios::in
+#ifdef _WIN32
+    | std::ios::binary
+#endif
+    );
+  unsigned char *file_buffer = new unsigned char [ len + 1 ];
+  ifs.read(reinterpret_cast<char*>(file_buffer), len);
+  ifs.close();
+
+  unsigned char *encoded_buffer
+    = new unsigned char [ static_cast<int>(
+        static_cast<double>(len) * 1.5 + 5.0) ];
+
+  unsigned long rlen
+    = cmsysBase64_Encode(file_buffer, len, encoded_buffer, 1);
+
+  std::string base64 = "";
+  for(unsigned long i = 0; i < rlen; i++)
+    {
+    base64 += encoded_buffer[i];
+    }
+  delete [] file_buffer;
+  delete [] encoded_buffer;
+
+  return base64;
+}
+
 
 //----------------------------------------------------------------------
 bool cmCTest::SubmitExtraFiles(const std::vector<cmStdString> &files)
@@ -1807,32 +1944,30 @@ bool cmCTest::AddTestsForDashboardType(std::string &targ)
     }
   else
     {
-    cmCTestLog(this, ERROR_MESSAGE,
-               "CTest -D called with incorrect option: "
-               << targ << std::endl);
-    cmCTestLog(this, ERROR_MESSAGE, "Available options are:" << std::endl
-               << "  " << "ctest" << " -D Continuous" << std::endl
-               << "  " << "ctest"
-               << " -D Continuous(Start|Update|Configure|Build)" << std::endl
-               << "  " << "ctest"
-               << " -D Continuous(Test|Coverage|MemCheck|Submit)"
-               << std::endl
-               << "  " << "ctest" << " -D Experimental" << std::endl
-               << "  " << "ctest"
-               << " -D Experimental(Start|Update|Configure|Build)"
-               << std::endl
-               << "  " << "ctest"
-               << " -D Experimental(Test|Coverage|MemCheck|Submit)"
-               << std::endl
-               << "  " << "ctest" << " -D Nightly" << std::endl
-               << "  " << "ctest"
-               << " -D Nightly(Start|Update|Configure|Build)" << std::endl
-               << "  " << "ctest"
-               << " -D Nightly(Test|Coverage|MemCheck|Submit)" << std::endl
-               << "  " << "ctest" << " -D NightlyMemoryCheck" << std::endl);
     return false;
     }
   return true;
+}
+
+
+//----------------------------------------------------------------------
+void cmCTest::ErrorMessageUnknownDashDValue(std::string &val)
+{
+  cmCTestLog(this, ERROR_MESSAGE,
+    "CTest -D called with incorrect option: " << val << std::endl);
+
+  cmCTestLog(this, ERROR_MESSAGE,
+    "Available options are:" << std::endl
+    << "  ctest -D Continuous" << std::endl
+    << "  ctest -D Continuous(Start|Update|Configure|Build)" << std::endl
+    << "  ctest -D Continuous(Test|Coverage|MemCheck|Submit)" << std::endl
+    << "  ctest -D Experimental" << std::endl
+    << "  ctest -D Experimental(Start|Update|Configure|Build)" << std::endl
+    << "  ctest -D Experimental(Test|Coverage|MemCheck|Submit)" << std::endl
+    << "  ctest -D Nightly" << std::endl
+    << "  ctest -D Nightly(Start|Update|Configure|Build)" << std::endl
+    << "  ctest -D Nightly(Test|Coverage|MemCheck|Submit)" << std::endl
+    << "  ctest -D NightlyMemoryCheck" << std::endl);
 }
 
 
@@ -1871,6 +2006,12 @@ void cmCTest::HandleCommandLineArguments(size_t &i,
   if(this->CheckArgument(arg, "--no-compress-output"))
     {
     this->CompressTestOutput = false;
+    this->CompressMemCheckOutput = false;
+    }
+
+  if(this->CheckArgument(arg, "--print-labels"))
+    {
+    this->PrintLabels = true;
     }
 
   if(this->CheckArgument(arg, "--http1.0"))
@@ -2089,13 +2230,29 @@ void cmCTest::HandleScriptArguments(size_t &i,
 }
 
 //----------------------------------------------------------------------
+bool cmCTest::AddVariableDefinition(const std::string &arg)
+{
+  std::string name;
+  std::string value;
+  cmCacheManager::CacheEntryType type = cmCacheManager::UNINITIALIZED;
+
+  if (cmCacheManager::ParseEntry(arg.c_str(), name, value, type))
+    {
+    this->Definitions[name] = value;
+    return true;
+    }
+
+  return false;
+}
+
+//----------------------------------------------------------------------
 // the main entry point of ctest, called from main
 int cmCTest::Run(std::vector<std::string> &args, std::string* output)
 {
   this->FindRunningCMake();
   const char* ctestExec = "ctest";
   bool cmakeAndTest = false;
-  bool performSomeTest = true;
+  bool executeTests = true;
   bool SRArgumentSpecified = false;
 
   // copy the command line
@@ -2120,12 +2277,27 @@ int cmCTest::Run(std::vector<std::string> &args, std::string* output)
       this->ProduceXML = true;
       i++;
       std::string targ = args[i];
-      // AddTestsForDashboard parses the dashborad type and converts it
-      // into the seperate stages
+      // AddTestsForDashboard parses the dashboard type and converts it
+      // into the separate stages
       if (!this->AddTestsForDashboardType(targ))
         {
-        performSomeTest = false;
+        if (!this->AddVariableDefinition(targ))
+          {
+          this->ErrorMessageUnknownDashDValue(targ);
+          executeTests = false;
+          }
         }
+      }
+
+    // If it's not exactly -D, but it starts with -D, then try to parse out
+    // a variable definition from it, same as CMake does. Unsuccessful
+    // attempts are simply ignored since previous ctest versions ignore
+    // this too. (As well as many other unknown command line args.)
+    //
+    if(arg != "-D" && cmSystemTools::StringStartsWith(arg.c_str(), "-D"))
+      {
+      std::string input = arg.substr(2);
+      this->AddVariableDefinition(input);
       }
 
     if(this->CheckArgument(arg, "-T", "--test-action") &&
@@ -2135,7 +2307,7 @@ int cmCTest::Run(std::vector<std::string> &args, std::string* output)
       i++;
       if ( !this->SetTest(args[i].c_str(), false) )
         {
-        performSomeTest = false;
+        executeTests = false;
         cmCTestLog(this, ERROR_MESSAGE,
           "CTest -T called with incorrect option: "
           << args[i].c_str() << std::endl);
@@ -2173,7 +2345,7 @@ int cmCTest::Run(std::vector<std::string> &args, std::string* output)
         }
       else
         {
-        performSomeTest = false;
+        executeTests = false;
         cmCTestLog(this, ERROR_MESSAGE,
           "CTest -M called with incorrect option: " << str.c_str()
           << std::endl);
@@ -2244,8 +2416,7 @@ int cmCTest::Run(std::vector<std::string> &args, std::string* output)
     return retv;
     }
 
-  // if some tests must be run 
-  if(performSomeTest)
+  if(executeTests)
     {
     int res;
     // call process directory
@@ -2444,6 +2615,8 @@ void cmCTest::PopulateCustomVector(cmMakefile* mf, const char* def,
   std::vector<std::string> slist;
   cmSystemTools::ExpandListArgument(dval, slist);
   std::vector<std::string>::iterator it;
+
+  vec.clear();
 
   for ( it = slist.begin(); it != slist.end(); ++it )
     {
@@ -2720,7 +2893,7 @@ bool cmCTest::SetCTestConfigurationFromCMakeVariable(cmMakefile* mf,
     }
   cmCTestLog(this, HANDLER_VERBOSE_OUTPUT,
              "SetCTestConfigurationFromCMakeVariable:"
-             << dconfig << ":" << cmake_var);
+             << dconfig << ":" << cmake_var << std::endl);
   this->SetCTestConfiguration(dconfig, ctvar);
   return true;
 }
@@ -2994,4 +3167,59 @@ void cmCTest::OutputTestErrors(std::vector<char> const &process_output)
     test_outputs.append(&*process_output.begin(), process_output.size());
     }
   cmCTestLog(this, HANDLER_OUTPUT, test_outputs << std::endl << std::flush);
+}
+
+//----------------------------------------------------------------------
+bool cmCTest::CompressString(std::string& str)
+{
+  int ret;
+  z_stream strm;
+
+  unsigned char* in = reinterpret_cast<unsigned char*>(
+    const_cast<char*>(str.c_str()));
+  //zlib makes the guarantee that this is the maximum output size
+  int outSize = static_cast<int>(
+    static_cast<double>(str.size()) * 1.001 + 13.0);
+  unsigned char* out = new unsigned char[outSize];
+
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
+  strm.opaque = Z_NULL;
+  ret = deflateInit(&strm, -1); //default compression level
+  if (ret != Z_OK)
+    {
+    delete[] out;
+    return false;
+    }
+
+  strm.avail_in = static_cast<uInt>(str.size());
+  strm.next_in = in;
+  strm.avail_out = outSize;
+  strm.next_out = out;
+  ret = deflate(&strm, Z_FINISH);
+
+  if(ret == Z_STREAM_ERROR || ret != Z_STREAM_END)
+    {
+    cmCTestLog(this, ERROR_MESSAGE, "Error during gzip compression."
+      << std::endl);
+    delete[] out;
+    return false;
+    }
+
+  (void)deflateEnd(&strm);
+
+  // Now base64 encode the resulting binary string
+  unsigned char* base64EncodedBuffer
+    = new unsigned char[static_cast<int>(outSize * 1.5)];
+
+  unsigned long rlen
+    = cmsysBase64_Encode(out, strm.total_out, base64EncodedBuffer, 1);
+
+  str = "";
+  str.append(reinterpret_cast<char*>(base64EncodedBuffer), rlen);
+
+  delete [] base64EncodedBuffer;
+  delete [] out;
+
+  return true;
 }

@@ -30,7 +30,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 SET(SWIG_CXX_EXTENSION "cxx")
@@ -47,20 +47,17 @@ MACRO(SWIG_MODULE_INITIALIZE name language)
   SET(SWIG_MODULE_${name}_LANGUAGE "${swig_uppercase_language}")
   SET(SWIG_MODULE_${name}_SWIG_LANGUAGE_FLAG "${swig_lowercase_language}")
 
-  IF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xUNKNOWNx$")
-    MESSAGE(FATAL_ERROR "SWIG Error: Language \"${language}\" not found")
-  ENDIF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xUNKNOWNx$")
-
   SET(SWIG_MODULE_${name}_REAL_NAME "${name}")
-  IF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xPYTHONx$")
+  IF("${SWIG_MODULE_${name}_LANGUAGE}" STREQUAL "UNKNOWN")
+    MESSAGE(FATAL_ERROR "SWIG Error: Language \"${language}\" not found")
+  ELSEIF("${SWIG_MODULE_${name}_LANGUAGE}" STREQUAL "PYTHON")
     # when swig is used without the -interface it will produce in the module.py
     # a 'import _modulename' statement, which implies having a corresponding 
     # _modulename.so (*NIX), _modulename.pyd (Win32).
     SET(SWIG_MODULE_${name}_REAL_NAME "_${name}")
-  ENDIF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xPYTHONx$")
-  IF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xPERLx$")
+  ELSEIF("${SWIG_MODULE_${name}_LANGUAGE}" STREQUAL "PERL")
     SET(SWIG_MODULE_${name}_EXTRA_FLAGS "-shadow")
-  ENDIF("x${SWIG_MODULE_${name}_LANGUAGE}x" MATCHES "^xPERLx$")
+  ENDIF()
 ENDMACRO(SWIG_MODULE_INITIALIZE)
 
 #
@@ -69,6 +66,7 @@ ENDMACRO(SWIG_MODULE_INITIALIZE)
 #
 
 MACRO(SWIG_GET_EXTRA_OUTPUT_FILES language outfiles generatedpath infile)
+  SET(${outfiles} "")
   GET_SOURCE_FILE_PROPERTY(SWIG_GET_EXTRA_OUTPUT_FILES_module_basename
     ${infile} SWIG_MODULE_NAME)
   IF(SWIG_GET_EXTRA_OUTPUT_FILES_module_basename STREQUAL "NOTFOUND")
@@ -125,8 +123,6 @@ MACRO(SWIG_ADD_SOURCE_TO_MODULE name outfiles infile)
   # If CMAKE_SWIG_OUTDIR was specified then pass it to -outdir
   IF(CMAKE_SWIG_OUTDIR)
     SET(swig_outdir ${CMAKE_SWIG_OUTDIR})
-    # it may not exist, so create it:
-    file(MAKE_DIRECTORY ${CMAKE_SWIG_OUTDIR})
   ELSE(CMAKE_SWIG_OUTDIR)
     SET(swig_outdir ${CMAKE_CURRENT_BINARY_DIR})
   ENDIF(CMAKE_SWIG_OUTDIR)
@@ -168,6 +164,8 @@ MACRO(SWIG_ADD_SOURCE_TO_MODULE name outfiles infile)
   ENDIF(SWIG_MODULE_${name}_EXTRA_FLAGS)
   ADD_CUSTOM_COMMAND(
     OUTPUT "${swig_generated_file_fullname}" ${swig_extra_generated_files}
+    # Let's create the ${swig_outdir} at execution time, in case dir contains $(OutDir)
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${swig_outdir}
     COMMAND "${SWIG_EXECUTABLE}"
     ARGS "-${SWIG_MODULE_${name}_SWIG_LANGUAGE_FLAG}"
     ${swig_source_file_flags}

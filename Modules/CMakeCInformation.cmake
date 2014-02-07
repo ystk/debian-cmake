@@ -1,6 +1,6 @@
 
 #=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
+# Copyright 2004-2011 Kitware, Inc.
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This file sets the basic flags for the C language in CMake.
@@ -25,6 +25,8 @@ IF(UNIX)
 ELSE(UNIX)
   SET(CMAKE_C_OUTPUT_EXTENSION .obj)
 ENDIF(UNIX)
+
+SET(_INCLUDED_FILE 0)
 
 # Load compiler-specific information.
 IF(CMAKE_C_COMPILER_ID)
@@ -66,6 +68,12 @@ IF (NOT _INCLUDED_FILE)
   INCLUDE(Platform/${CMAKE_SYSTEM_NAME} OPTIONAL)
 ENDIF (NOT _INCLUDED_FILE)
 
+IF(CMAKE_C_SIZEOF_DATA_PTR)
+  FOREACH(f ${CMAKE_C_ABI_FILES})
+    INCLUDE(${f})
+  ENDFOREACH()
+  UNSET(CMAKE_C_ABI_FILES)
+ENDIF()
 
 # This should be included before the _INIT variables are
 # used to initialize the cache.  Since the rule variables 
@@ -74,12 +82,16 @@ ENDIF (NOT _INCLUDED_FILE)
 # be made to those values.
 
 IF(CMAKE_USER_MAKE_RULES_OVERRIDE)
-   INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE})
-ENDIF(CMAKE_USER_MAKE_RULES_OVERRIDE)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE "${_override}")
+ENDIF()
 
 IF(CMAKE_USER_MAKE_RULES_OVERRIDE_C)
-   INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE_C})
-ENDIF(CMAKE_USER_MAKE_RULES_OVERRIDE_C)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE_C} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE_C "${_override}")
+ENDIF()
 
 
 # for most systems a module is the same as a shared library
@@ -152,7 +164,7 @@ INCLUDE(CMakeCommonLanguageInclude)
 # create a C shared library
 IF(NOT CMAKE_C_CREATE_SHARED_LIBRARY)
   SET(CMAKE_C_CREATE_SHARED_LIBRARY
-      "<CMAKE_C_COMPILER> <CMAKE_SHARED_LIBRARY_C_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> <CMAKE_SHARED_LIBRARY_SONAME_C_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
+      "<CMAKE_C_COMPILER> <CMAKE_SHARED_LIBRARY_C_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
 ENDIF(NOT CMAKE_C_CREATE_SHARED_LIBRARY)
 
 # create a C shared module just copy the shared library rule
@@ -162,9 +174,15 @@ ENDIF(NOT CMAKE_C_CREATE_SHARED_MODULE)
 
 # Create a static archive incrementally for large object file counts.
 # If CMAKE_C_CREATE_STATIC_LIBRARY is set it will override these.
-SET(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> r  <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+IF(NOT DEFINED CMAKE_C_ARCHIVE_CREATE)
+  SET(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_C_ARCHIVE_APPEND)
+  SET(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> r  <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_C_ARCHIVE_FINISH)
+  SET(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+ENDIF()
 
 # compile a C file into an object file
 IF(NOT CMAKE_C_COMPILE_OBJECT)

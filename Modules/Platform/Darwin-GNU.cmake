@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This module is shared by multiple languages; use include blocker.
@@ -20,8 +20,8 @@ set(__DARWIN_COMPILER_GNU 1)
 
 macro(__darwin_compiler_gnu lang)
   # GNU does not have -shared on OS X
-  set(CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS "-dynamiclib -headerpad_max_install_names")
-  set(CMAKE_SHARED_MODULE_CREATE_${lang}_FLAGS "-bundle -headerpad_max_install_names")
+  set(CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS "-dynamiclib -Wl,-headerpad_max_install_names")
+  set(CMAKE_SHARED_MODULE_CREATE_${lang}_FLAGS "-bundle -Wl,-headerpad_max_install_names")
 endmacro()
 
 macro(cmake_gnu_has_isysroot lang)

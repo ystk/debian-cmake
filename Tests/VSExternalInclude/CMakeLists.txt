@@ -6,7 +6,7 @@ IF(${CMAKE_GENERATOR} MATCHES "Visual Studio 6")
 ELSE(${CMAKE_GENERATOR} MATCHES "Visual Studio 6")
   SET(PROJECT_EXT vcproj)
 ENDIF(${CMAKE_GENERATOR} MATCHES "Visual Studio 6")
-IF(${CMAKE_GENERATOR} MATCHES "Visual Studio 10")
+IF(${CMAKE_GENERATOR} MATCHES "Visual Studio 1[01]")
   SET(PROJECT_EXT vcxproj)
 ENDIF()
 
@@ -46,7 +46,15 @@ ADD_DEPENDENCIES(VSExternalInclude lib2)
 # and the sln file can no longer be the only source
 # of that depend.  So, for VS 10 make the executable
 # depend on lib1 and lib2
-IF(MSVC10)
+IF(MSVC10 OR MSVC11)
   ADD_DEPENDENCIES(VSExternalInclude lib1)
 ENDIF()
 
+# Interaction testing between the FOLDER target property and
+# INCLUDE_EXTERNAL_MSPROJECT targets:
+set_target_properties(VSExternalInclude PROPERTIES FOLDER folder1/folder2)
+set_target_properties(lib1 PROPERTIES FOLDER folder1/folder2)
+set_target_properties(lib2 PROPERTIES FOLDER folder1/folder2)
+add_custom_target(EmptyCustomTarget)
+set_target_properties(EmptyCustomTarget PROPERTIES FOLDER folder1/folder2)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)

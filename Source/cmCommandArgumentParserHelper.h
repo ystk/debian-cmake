@@ -81,7 +81,6 @@ private:
   cmStdString InputBuffer;
   std::vector<char> OutputBuffer;
   int CurrentLine;
-  int UnionsAvailable;
   int Verbose;
 
   void Print(const char* place, const char* str);
@@ -96,6 +95,8 @@ private:
   const cmMakefile* Makefile;
   std::string Result;
   const char* FileName;
+  bool WarnUninitialized;
+  bool CheckSystemVars;
   long FileLine;
   bool EscapeQuotes;
   std::string ErrorString;

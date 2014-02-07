@@ -61,6 +61,7 @@ public:
     PartSubmit,
     PartNotes,
     PartExtraFiles,
+    PartUpload,
     PartCount // Update names in constructor when adding a part
   };
 
@@ -192,8 +193,13 @@ public:
   ///! Get the current time as string
   std::string CurrentTime();
 
+  //! tar/gzip and then base 64 encode a file
+  std::string Base64GzipEncodeFile(std::string file);
+  //! base64 encode a file
+  std::string Base64EncodeFile(std::string file);
+
   /** 
-   * Return the time remaianing that the script is allowed to run in
+   * Return the time remaining that the script is allowed to run in
    * seconds if the user has set the variable CTEST_TIME_LIMIT. If that has
    * not been set it returns 1e7 seconds
    */
@@ -210,7 +216,11 @@ public:
 
   bool ShouldUseHTTP10() { return this->UseHTTP10; }
 
+  bool ShouldPrintLabels() { return this->PrintLabels; }
+
   bool ShouldCompressTestOutput();
+  bool ShouldCompressMemCheckOutput();
+  bool CompressString(std::string& str);
 
   std::string GetCDashVersion();
 
@@ -248,6 +258,10 @@ public:
   bool RunCommand(const char* command,
     std::string* stdOut, std::string* stdErr,
     int* retVal = 0, const char* dir = 0, double timeout = 0.0);
+
+  //! Clean/make safe for xml the given value such that it may be used as
+  // one of the key fields by CDash when computing the buildid.
+  static std::string SafeBuildIdField(const std::string& value);
 
   //! Start CTest XML output file
   void StartXML(std::ostream& ostr, bool append);
@@ -403,6 +417,12 @@ public:
   bool GetLabelSummary() { return this->LabelSummary;}
 
   std::string GetCostDataFile();
+
+  const std::map<std::string, std::string> &GetDefinitions()
+    {
+    return this->Definitions;
+    }
+
 private:
   std::string ConfigType;
   std::string ScheduleType;
@@ -413,6 +433,7 @@ private:
   bool ProduceXML;
   bool LabelSummary;
   bool UseHTTP10;
+  bool PrintLabels;
   bool Failover;
   bool BatchJobs;
 
@@ -421,7 +442,8 @@ private:
   bool RunConfigurationScript;
 
   //flag for lazy getter (optimization)
-  bool ComputedCompressOutput;
+  bool ComputedCompressTestOutput;
+  bool ComputedCompressMemCheckOutput;
 
   int GenerateNotesFile(const char* files);
 
@@ -478,8 +500,8 @@ private:
   bool                     ShortDateFormat;
 
   bool                     CompressXMLFiles;
-
   bool                     CompressTestOutput;
+  bool                     CompressMemCheckOutput;
 
   void InitStreams();
   std::ostream* StreamOut;
@@ -500,6 +522,12 @@ private:
   //! parse the option after -D and convert it into the appropriate steps
   bool AddTestsForDashboardType(std::string &targ);
 
+  //! read as "emit an error message for an unknown -D value"
+  void ErrorMessageUnknownDashDValue(std::string &val);
+
+  //! add a variable definition from a command line -D value
+  bool AddVariableDefinition(const std::string &arg);
+
   //! parse and process most common command line arguments
   void HandleCommandLineArguments(size_t &i, 
                                   std::vector<std::string> &args);
@@ -512,7 +540,7 @@ private:
   //! Reread the configuration file
   bool UpdateCTestConfiguration();
 
-  //! Create not from files.
+  //! Create note from files.
   int GenerateCTestNotesOutput(std::ostream& os,
     const VectorOfStrings& files);
 
@@ -542,6 +570,8 @@ private:
   int OutputLogFileLastTag;
 
   bool OutputTestOutputOnTestFailure;
+
+  std::map<std::string, std::string> Definitions;
 };
 
 class cmCTestLogWrite

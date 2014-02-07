@@ -5,6 +5,9 @@
 #  BISON_VERSION - version of bison
 #  BISON_FOUND - true if the program was found
 #
+# The minimum required version of bison can be specified using the
+# standard CMake syntax, e.g. find_package(BISON 2.1.3)
+#
 # If bison is found, the module defines the macros:
 #  BISON_TARGET(<Name> <YaccInput> <CodeOutput> [VERBOSE <file>]
 #              [COMPILE_FLAGS <string>])
@@ -41,24 +44,41 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 FIND_PROGRAM(BISON_EXECUTABLE bison DOC "path to the bison executable")
 MARK_AS_ADVANCED(BISON_EXECUTABLE)
 
 IF(BISON_EXECUTABLE)
+  # the bison commands should be executed with the C locale, otherwise
+  # the message (which are parsed) may be translated
+  SET(_Bison_SAVED_LC_ALL "$ENV{LC_ALL}")
+  SET(ENV{LC_ALL} C)
 
   EXECUTE_PROCESS(COMMAND ${BISON_EXECUTABLE} --version
     OUTPUT_VARIABLE BISON_version_output
     ERROR_VARIABLE BISON_version_error
     RESULT_VARIABLE BISON_version_result
     OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  SET(ENV{LC_ALL} ${_Bison_SAVED_LC_ALL})
+
   IF(NOT ${BISON_version_result} EQUAL 0)
     MESSAGE(SEND_ERROR "Command \"${BISON_EXECUTABLE} --version\" failed with output:\n${BISON_version_error}")
   ELSE()
-    STRING(REGEX REPLACE "^bison \\(GNU Bison\\) ([^\n]+)\n.*" "\\1"
-      BISON_VERSION "${BISON_version_output}")
+    # Bison++
+    IF("${BISON_version_output}" MATCHES "^bison\\+\\+")
+      STRING(REGEX REPLACE "^bison\\+\\+ Version ([^,]+).*" "\\1"
+        BISON_VERSION "${BISON_version_output}")
+    # GNU Bison
+    ELSEIF("${BISON_version_output}" MATCHES "^bison[^+]")
+      STRING(REGEX REPLACE "^bison \\(GNU Bison\\) ([^\n]+)\n.*" "\\1"
+        BISON_VERSION "${BISON_version_output}")
+    ELSEIF("${BISON_version_output}" MATCHES "^GNU Bison ")
+      STRING(REGEX REPLACE "^GNU Bison (version )?([^\n]+).*" "\\2"
+        BISON_VERSION "${BISON_version_output}")
+    ENDIF()
   ENDIF()
 
   # internal macro
@@ -93,7 +113,7 @@ IF(BISON_EXECUTABLE)
   #
   MACRO(BISON_TARGET Name BisonInput BisonOutput)
     SET(BISON_TARGET_output_header "")
-    SET(BISON_TARGET_command_opt "")
+    SET(BISON_TARGET_cmdopt "")
     SET(BISON_TARGET_outputs "${BisonOutput}")
     IF(NOT ${ARGC} EQUAL 3 AND NOT ${ARGC} EQUAL 5 AND NOT ${ARGC} EQUAL 7)
       MESSAGE(SEND_ERROR "Usage")
@@ -112,7 +132,7 @@ IF(BISON_EXECUTABLE)
         IF("${ARGV5}" STREQUAL "VERBOSE")
           BISON_TARGET_option_verbose(${Name} ${BisonOutput} "${ARGV6}")
         ENDIF()
-      
+
         IF("${ARGV5}" STREQUAL "COMPILE_FLAGS")
           BISON_TARGET_option_extraopts("${ARGV6}")
         ENDIF()
@@ -122,10 +142,10 @@ IF(BISON_EXECUTABLE)
       LIST(APPEND BISON_TARGET_cmdopt "-d")
       STRING(REGEX REPLACE "^(.*)(\\.[^.]*)$" "\\2" _fileext "${ARGV2}")
       STRING(REPLACE "c" "h" _fileext ${_fileext})
-      STRING(REGEX REPLACE "^(.*)(\\.[^.]*)$" "\\1${_fileext}" 
+      STRING(REGEX REPLACE "^(.*)(\\.[^.]*)$" "\\1${_fileext}"
           BISON_${Name}_OUTPUT_HEADER "${ARGV2}")
       LIST(APPEND BISON_TARGET_outputs "${BISON_${Name}_OUTPUT_HEADER}")
-        
+
       ADD_CUSTOM_COMMAND(OUTPUT ${BISON_TARGET_outputs}
         ${BISON_TARGET_extraoutputs}
         COMMAND ${BISON_EXECUTABLE}
@@ -133,7 +153,7 @@ IF(BISON_EXECUTABLE)
         DEPENDS ${ARGV1}
         COMMENT "[BISON][${Name}] Building parser with bison ${BISON_VERSION}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    
+
       # define target variables
       SET(BISON_${Name}_DEFINED TRUE)
       SET(BISON_${Name}_INPUT ${ARGV1})
@@ -148,7 +168,8 @@ IF(BISON_EXECUTABLE)
 
 ENDIF(BISON_EXECUTABLE)
 
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(BISON DEFAULT_MSG BISON_EXECUTABLE)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(BISON REQUIRED_VARS  BISON_EXECUTABLE
+                                        VERSION_VAR BISON_VERSION)
 
 # FindBISON.cmake ends here

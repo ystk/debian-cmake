@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 IF(NOT RUN_FROM_CTEST_OR_DART)
@@ -65,10 +65,11 @@ IF(NOT _CTEST_TARGETS_ADDED)
       ${CMAKE_CTEST_COMMAND} ${__conf_types} -D ${mode}
       )
     SET_PROPERTY(TARGET ${mode} PROPERTY RULE_LAUNCH_CUSTOM "")
+    SET_PROPERTY(TARGET ${mode} PROPERTY FOLDER "CTestDashboardTargets")
   ENDFOREACH(mode)
 
   # For Makefile generators add more granular targets.
-  IF("${CMAKE_GENERATOR}" MATCHES Make)
+  IF("${CMAKE_GENERATOR}" MATCHES "(Ninja|Make)")
     # Make targets for Experimental builds
     FOREACH(mode Nightly Experimental Continuous)
       FOREACH(testtype
@@ -79,7 +80,16 @@ IF(NOT _CTEST_TARGETS_ADDED)
           ${CMAKE_CTEST_COMMAND} ${__conf_types} -D ${mode}${testtype}
           )
         SET_PROPERTY(TARGET ${mode}${testtype} PROPERTY RULE_LAUNCH_CUSTOM "")
+        SET_PROPERTY(TARGET ${mode}${testtype} PROPERTY FOLDER "CTestDashboardTargets")
       ENDFOREACH(testtype)
     ENDFOREACH(mode)
-  ENDIF("${CMAKE_GENERATOR}" MATCHES Make)
+  ENDIF("${CMAKE_GENERATOR}" MATCHES "(Ninja|Make)")
+
+  # If requested, add an alias that is the equivalent of the built-in "test"
+  # or "RUN_TESTS" target:
+  IF(CTEST_TEST_TARGET_ALIAS)
+    ADD_CUSTOM_TARGET(${CTEST_TEST_TARGET_ALIAS}
+      ${CMAKE_CTEST_COMMAND} ${__conf_types}
+      )
+  ENDIF()
 ENDIF(NOT _CTEST_TARGETS_ADDED)

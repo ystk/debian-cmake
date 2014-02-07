@@ -4,9 +4,6 @@
 #
 # ---- Variables and Macros
 #  SQUISH_FOUND                    If false, don't try to use Squish
-#  SQUISH_VERSION_MAJOR            The major version of Squish found
-#  SQUISH_VERSION_MINOR            The minor version of Squish found
-#  SQUISH_VERSION_PATCH            The patch version of Squish found
 #
 #  SQUISH_INSTALL_DIR              The Squish installation directory (containing bin, lib, etc)
 #  SQUISH_SERVER_EXECUTABLE        The squishserver executable
@@ -36,7 +33,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 SET(SQUISH_INSTALL_DIR_STRING "Directory containing the bin, doc, and lib directories for Squish; this should be the root of the installation directory.")
@@ -46,18 +43,14 @@ SET(SQUISH_CLIENT_EXECUTABLE_STRING "The squishclient executable program.")
 # Search only if the location is not already known.
 IF(NOT SQUISH_INSTALL_DIR)
   # Get the system search path as a list.
-  IF(UNIX)
-    STRING(REGEX MATCHALL "[^:]+" SQUISH_INSTALL_DIR_SEARCH1 "$ENV{PATH}")
-  ELSE(UNIX)
-    STRING(REGEX REPLACE "\\\\" "/" SQUISH_INSTALL_DIR_SEARCH1 "$ENV{PATH}")
-  ENDIF(UNIX)
-  STRING(REGEX REPLACE "/;" ";" SQUISH_INSTALL_DIR_SEARCH2 ${SQUISH_INSTALL_DIR_SEARCH1})
+  FILE(TO_CMAKE_PATH "$ENV{PATH}" SQUISH_INSTALL_DIR_SEARCH2)
 
   # Construct a set of paths relative to the system search path.
   SET(SQUISH_INSTALL_DIR_SEARCH "")
   FOREACH(dir ${SQUISH_INSTALL_DIR_SEARCH2})
     SET(SQUISH_INSTALL_DIR_SEARCH ${SQUISH_INSTALL_DIR_SEARCH} "${dir}/../lib/fltk")
   ENDFOREACH(dir)
+  STRING(REPLACE "//" "/" SQUISH_INSTALL_DIR_SEARCH "${SQUISH_INSTALL_DIR_SEARCH}")
 
   # Look for an installation
   FIND_PATH(SQUISH_INSTALL_DIR bin/squishrunner

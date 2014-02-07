@@ -1,14 +1,16 @@
-# GetPrerequisites.cmake
-#
-# This script provides functions to list the .dll, .dylib or .so files that an
-# executable or shared library file depends on. (Its prerequisites.)
+# - Functions to analyze and list executable file prerequisites.
+# This module provides functions to list the .dll, .dylib or .so
+# files that an executable or shared library file depends on. (Its
+# prerequisites.)
 #
 # It uses various tools to obtain the list of required shared library files:
 #   dumpbin (Windows)
 #   ldd (Linux/Unix)
 #   otool (Mac OSX)
-#
-# The following functions are provided by this script:
+# The following functions are provided by this module:
+#   get_prerequisites
+#   list_prerequisites
+#   list_prerequisites_by_glob
 #   gp_append_unique
 #   is_file_executable
 #   gp_item_default_embedded_path
@@ -18,12 +20,91 @@
 #   gp_resolved_file_type
 #     (projects can override with gp_resolved_file_type_override)
 #   gp_file_type
-#   get_prerequisites
-#   list_prerequisites
-#   list_prerequisites_by_glob
-#
 # Requires CMake 2.6 or greater because it uses function, break, return and
 # PARENT_SCOPE.
+#
+#  GET_PREREQUISITES(<target> <prerequisites_var> <exclude_system> <recurse>
+#                    <exepath> <dirs>)
+# Get the list of shared library files required by <target>. The list in
+# the variable named <prerequisites_var> should be empty on first entry to
+# this function. On exit, <prerequisites_var> will contain the list of
+# required shared library files.
+#
+# <target> is the full path to an executable file. <prerequisites_var> is the
+# name of a CMake variable to contain the results. <exclude_system> must be 0
+# or 1 indicating whether to include or exclude "system" prerequisites. If
+# <recurse> is set to 1 all prerequisites will be found recursively, if set to
+# 0 only direct prerequisites are listed. <exepath> is the path to the top
+# level executable used for @executable_path replacment on the Mac. <dirs> is
+# a list of paths where libraries might be found: these paths are searched
+# first when a target without any path info is given. Then standard system
+# locations are also searched: PATH, Framework locations, /usr/lib...
+#
+#  LIST_PREREQUISITES(<target> [<recurse> [<exclude_system> [<verbose>]]])
+# Print a message listing the prerequisites of <target>.
+#
+# <target> is the name of a shared library or executable target or the full
+# path to a shared library or executable file. If <recurse> is set to 1 all
+# prerequisites will be found recursively, if set to 0 only direct
+# prerequisites are listed. <exclude_system> must be 0 or 1 indicating whether
+# to include or exclude "system" prerequisites. With <verbose> set to 0 only
+# the full path names of the prerequisites are printed, set to 1 extra
+# informatin will be displayed.
+#
+#  LIST_PREREQUISITES_BY_GLOB(<glob_arg> <glob_exp>)
+# Print the prerequisites of shared library and executable files matching a
+# globbing pattern. <glob_arg> is GLOB or GLOB_RECURSE and <glob_exp> is a
+# globbing expression used with "file(GLOB" or "file(GLOB_RECURSE" to retrieve
+# a list of matching files. If a matching file is executable, its prerequisites
+# are listed.
+#
+# Any additional (optional) arguments provided are passed along as the
+# optional arguments to the list_prerequisites calls.
+#
+#  GP_APPEND_UNIQUE(<list_var> <value>)
+# Append <value> to the list variable <list_var> only if the value is not
+# already in the list.
+#
+#  IS_FILE_EXECUTABLE(<file> <result_var>)
+# Return 1 in <result_var> if <file> is a binary executable, 0 otherwise.
+#
+#  GP_ITEM_DEFAULT_EMBEDDED_PATH(<item> <default_embedded_path_var>)
+# Return the path that others should refer to the item by when the item
+# is embedded inside a bundle.
+#
+# Override on a per-project basis by providing a project-specific
+# gp_item_default_embedded_path_override function.
+#
+#  GP_RESOLVE_ITEM(<context> <item> <exepath> <dirs> <resolved_item_var>)
+# Resolve an item into an existing full path file.
+#
+# Override on a per-project basis by providing a project-specific
+# gp_resolve_item_override function.
+#
+#  GP_RESOLVED_FILE_TYPE(<original_file> <file> <exepath> <dirs> <type_var>)
+# Return the type of <file> with respect to <original_file>. String
+# describing type of prerequisite is returned in variable named <type_var>.
+#
+# Use <exepath> and <dirs> if necessary to resolve non-absolute <file>
+# values -- but only for non-embedded items.
+#
+# Possible types are:
+#   system
+#   local
+#   embedded
+#   other
+# Override on a per-project basis by providing a project-specific
+# gp_resolved_file_type_override function.
+#
+#  GP_FILE_TYPE(<original_file> <file> <type_var>)
+# Return the type of <file> with respect to <original_file>. String
+# describing type of prerequisite is returned in variable named <type_var>.
+#
+# Possible types are:
+#   system
+#   local
+#   embedded
+#   other
 
 #=============================================================================
 # Copyright 2008-2009 Kitware, Inc.
@@ -35,14 +116,9 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
-# gp_append_unique list_var value
-#
-# Append value to the list variable ${list_var} only if the value is not
-# already in the list.
-#
 function(gp_append_unique list_var value)
   set(contains 0)
 
@@ -59,12 +135,6 @@ function(gp_append_unique list_var value)
 endfunction(gp_append_unique)
 
 
-# is_file_executable file result_var
-#
-# Return 1 in ${result_var} if ${file} is a binary executable.
-#
-# Return 0 in ${result_var} otherwise.
-#
 function(is_file_executable file result_var)
   #
   # A file is not executable until proven otherwise:
@@ -76,7 +146,7 @@ function(is_file_executable file result_var)
 
   # If file name ends in .exe on Windows, *assume* executable:
   #
-  if(WIN32)
+  if(WIN32 AND NOT UNIX)
     if("${file_full_lower}" MATCHES "\\.exe$")
       set(${result_var} 1 PARENT_SCOPE)
       return()
@@ -86,7 +156,7 @@ function(is_file_executable file result_var)
     # to determine ${result_var}. In 99%+? practical cases, the exe name
     # match will be sufficient...
     #
-  endif(WIN32)
+  endif(WIN32 AND NOT UNIX)
 
   # Use the information returned from the Unix shell command "file" to
   # determine if ${file_full} should be considered an executable file...
@@ -125,6 +195,14 @@ function(is_file_executable file result_var)
           return()
         endif("${file_ov}" MATCHES "text")
       endif("${file_ov}" MATCHES "executable")
+
+      # Also detect position independent executables on Linux,
+      # where "file" gives "shared object ... (uses shared libraries)"
+      if("${file_ov}" MATCHES "shared object.*\(uses shared libs\)")
+        set(${result_var} 1 PARENT_SCOPE)
+        return()
+      endif()
+
     else(file_cmd)
       message(STATUS "warning: No 'file' command, skipping execute_process...")
     endif(file_cmd)
@@ -132,14 +210,6 @@ function(is_file_executable file result_var)
 endfunction(is_file_executable)
 
 
-# gp_item_default_embedded_path item default_embedded_path_var
-#
-# Return the path that others should refer to the item by when the item
-# is embedded inside a bundle.
-#
-# Override on a per-project basis by providing a project-specific
-# gp_item_default_embedded_path_override function.
-#
 function(gp_item_default_embedded_path item default_embedded_path_var)
 
   # On Windows and Linux, "embed" prerequisites in the same directory
@@ -193,22 +263,15 @@ function(gp_item_default_embedded_path item default_embedded_path_var)
 endfunction(gp_item_default_embedded_path)
 
 
-# gp_resolve_item context item exepath dirs resolved_item_var
-#
-# Resolve an item into an existing full path file.
-#
-# Override on a per-project basis by providing a project-specific
-# gp_resolve_item_override function.
-#
 function(gp_resolve_item context item exepath dirs resolved_item_var)
   set(resolved 0)
   set(resolved_item "${item}")
 
   # Is it already resolved?
   #
-  if(EXISTS "${resolved_item}")
+  if(IS_ABSOLUTE "${resolved_item}" AND EXISTS "${resolved_item}")
     set(resolved 1)
-  endif(EXISTS "${resolved_item}")
+  endif(IS_ABSOLUTE "${resolved_item}" AND EXISTS "${resolved_item}")
 
   if(NOT resolved)
     if(item MATCHES "@executable_path")
@@ -249,6 +312,26 @@ function(gp_resolve_item context item exepath dirs resolved_item_var)
   endif(NOT resolved)
 
   if(NOT resolved)
+    if(item MATCHES "@rpath")
+      #
+      # @rpath references are relative to the paths built into the binaries with -rpath
+      # We handle this case like we do for other Unixes
+      #
+      string(REPLACE "@rpath/" "" norpath_item "${item}")
+
+      set(ri "ri-NOTFOUND")
+      find_file(ri "${norpath_item}" ${exepath} ${dirs} NO_DEFAULT_PATH)
+      if(ri)
+        #message(STATUS "info: 'find_file' in exepath/dirs (${ri})")
+        set(resolved 1)
+        set(resolved_item "${ri}")
+        set(ri "ri-NOTFOUND")
+      endif(ri)
+
+    endif(item MATCHES "@rpath")
+  endif(NOT resolved)
+
+  if(NOT resolved)
     set(ri "ri-NOTFOUND")
     find_file(ri "${item}" ${exepath} ${dirs} NO_DEFAULT_PATH)
     find_file(ri "${item}" ${exepath} ${dirs} /usr/lib)
@@ -280,7 +363,7 @@ function(gp_resolve_item context item exepath dirs resolved_item_var)
   # Using find_program on Windows will find dll files that are in the PATH.
   # (Converting simple file names into full path names if found.)
   #
-  if(WIN32)
+  if(WIN32 AND NOT UNIX)
   if(NOT resolved)
     set(ri "ri-NOTFOUND")
     find_program(ri "${item}" PATHS "${exepath};${dirs}" NO_DEFAULT_PATH)
@@ -292,7 +375,7 @@ function(gp_resolve_item context item exepath dirs resolved_item_var)
       set(ri "ri-NOTFOUND")
     endif(ri)
   endif(NOT resolved)
-  endif(WIN32)
+  endif(WIN32 AND NOT UNIX)
 
   # Provide a hook so that projects can override item resolution
   # by whatever logic they choose:
@@ -332,23 +415,6 @@ warning: cannot resolve item '${item}'
 endfunction(gp_resolve_item)
 
 
-# gp_resolved_file_type original_file file exepath dirs type_var
-#
-# Return the type of ${file} with respect to ${original_file}. String
-# describing type of prerequisite is returned in variable named ${type_var}.
-#
-# Use ${exepath} and ${dirs} if necessary to resolve non-absolute ${file}
-# values -- but only for non-embedded items.
-#
-# Possible types are:
-#   system
-#   local
-#   embedded
-#   other
-#
-# Override on a per-project basis by providing a project-specific
-# gp_resolved_file_type_override function.
-#
 function(gp_resolved_file_type original_file file exepath dirs type_var)
   #message(STATUS "**")
 
@@ -375,7 +441,7 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
     string(TOLOWER "${resolved_file}" lower)
 
     if(UNIX)
-      if(resolved_file MATCHES "^(/lib/|/lib32/|/lib64/|/usr/lib/|/usr/lib32/|/usr/lib64/|/usr/X11R6/)")
+      if(resolved_file MATCHES "^(/lib/|/lib32/|/lib64/|/usr/lib/|/usr/lib32/|/usr/lib64/|/usr/X11R6/|/usr/bin/)")
         set(is_system 1)
       endif()
     endif()
@@ -396,13 +462,42 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
       if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
         set(is_system 1)
       endif()
-    endif()
+
+      if(UNIX)
+        # if cygwin, we can get the properly formed windows paths from cygpath
+        find_program(CYGPATH_EXECUTABLE cygpath)
+
+        if(CYGPATH_EXECUTABLE)
+          execute_process(COMMAND ${CYGPATH_EXECUTABLE} -W
+                          OUTPUT_VARIABLE env_windir
+                          OUTPUT_STRIP_TRAILING_WHITESPACE)
+          execute_process(COMMAND ${CYGPATH_EXECUTABLE} -S
+                          OUTPUT_VARIABLE env_sysdir
+                          OUTPUT_STRIP_TRAILING_WHITESPACE)
+          string(TOLOWER "${env_windir}" windir)
+          string(TOLOWER "${env_sysdir}" sysroot)
+
+          if(lower MATCHES "^(${sysroot}/sys(tem|wow)|${windir}/sys(tem|wow)|(.*/)*msvc[^/]+dll)")
+            set(is_system 1)
+          endif()
+        endif(CYGPATH_EXECUTABLE)
+      endif(UNIX)
+    endif(WIN32)
 
     if(NOT is_system)
       get_filename_component(original_path "${original_lower}" PATH)
       get_filename_component(path "${lower}" PATH)
       if("${original_path}" STREQUAL "${path}")
         set(is_local 1)
+      else()
+        string(LENGTH "${original_path}/" original_length)
+        string(LENGTH "${lower}" path_length)
+        if(${path_length} GREATER ${original_length})
+          string(SUBSTRING "${lower}" 0 ${original_length} path)
+          if("${original_path}/" STREQUAL "${path}")
+            set(is_embedded 1)
+          endif()
+        endif()
       endif()
     endif()
   endif()
@@ -445,17 +540,6 @@ function(gp_resolved_file_type original_file file exepath dirs type_var)
 endfunction()
 
 
-# gp_file_type original_file file type_var
-#
-# Return the type of ${file} with respect to ${original_file}. String
-# describing type of prerequisite is returned in variable named ${type_var}.
-#
-# Possible types are:
-#   system
-#   local
-#   embedded
-#   other
-#
 function(gp_file_type original_file file type_var)
   if(NOT IS_ABSOLUTE "${original_file}")
     message(STATUS "warning: gp_file_type expects absolute full path for first arg original_file")
@@ -470,30 +554,6 @@ function(gp_file_type original_file file type_var)
 endfunction(gp_file_type)
 
 
-# get_prerequisites target prerequisites_var exclude_system recurse dirs
-#
-# Get the list of shared library files required by ${target}. The list in
-# the variable named ${prerequisites_var} should be empty on first entry to
-# this function. On exit, ${prerequisites_var} will contain the list of
-# required shared library files.
-#
-#  target is the full path to an executable file
-#
-#  prerequisites_var is the name of a CMake variable to contain the results
-#
-#  exclude_system is 0 or 1: 0 to include "system" prerequisites , 1 to
-#   exclude them
-#
-#  recurse is 0 or 1: 0 for direct prerequisites only, 1 for all prerequisites
-#   recursively
-#
-#  exepath is the path to the top level executable used for @executable_path
-#   replacment on the Mac
-#
-#  dirs is a list of paths where libraries might be found: these paths are
-#   searched first when a target without any path info is given. Then standard
-#   system locations are also searched: PATH, Framework locations, /usr/lib...
-#
 function(get_prerequisites target prerequisites_var exclude_system recurse exepath dirs)
   set(verbose 0)
   set(eol_char "E")
@@ -516,16 +576,18 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     if(APPLE)
       set(gp_tool "otool")
     endif(APPLE)
-    if(WIN32)
+    if(WIN32 AND NOT UNIX) # This is how to check for cygwin, har!
       set(gp_tool "dumpbin")
-    endif(WIN32)
+    endif(WIN32 AND NOT UNIX)
   endif("${gp_tool}" STREQUAL "")
 
   set(gp_tool_known 0)
 
   if("${gp_tool}" STREQUAL "ldd")
     set(gp_cmd_args "")
-    set(gp_regex "^[\t ]*[^\t ]+ => ([^\t ]+).*${eol_char}$")
+    set(gp_regex "^[\t ]*[^\t ]+ => ([^\t\(]+) .*${eol_char}$")
+    set(gp_regex_error "not found${eol_char}$")
+    set(gp_regex_fallback "^[\t ]*([^\t ]+) => ([^\t ]+).*${eol_char}$")
     set(gp_regex_cmp_count 1)
     set(gp_tool_known 1)
   endif("${gp_tool}" STREQUAL "ldd")
@@ -533,6 +595,8 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   if("${gp_tool}" STREQUAL "otool")
     set(gp_cmd_args "-L")
     set(gp_regex "^\t([^\t]+) \\(compatibility version ([0-9]+.[0-9]+.[0-9]+), current version ([0-9]+.[0-9]+.[0-9]+)\\)${eol_char}$")
+    set(gp_regex_error "")
+    set(gp_regex_fallback "")
     set(gp_regex_cmp_count 3)
     set(gp_tool_known 1)
   endif("${gp_tool}" STREQUAL "otool")
@@ -540,6 +604,8 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   if("${gp_tool}" STREQUAL "dumpbin")
     set(gp_cmd_args "/dependents")
     set(gp_regex "^    ([^ ].*[Dd][Ll][Ll])${eol_char}$")
+    set(gp_regex_error "")
+    set(gp_regex_fallback "")
     set(gp_regex_cmp_count 1)
     set(gp_tool_known 1)
     set(ENV{VS_UNICODE_OUTPUT} "") # Block extra output from inside VS IDE.
@@ -578,11 +644,22 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     #
     get_filename_component(gp_cmd_dir "${gp_cmd}" PATH)
     get_filename_component(gp_cmd_dlls_dir "${gp_cmd_dir}/../../Common7/IDE" ABSOLUTE)
+    # Use cmake paths as a user may have a PATH element ending with a backslash.
+    # This will escape the list delimiter and create havoc!
     if(EXISTS "${gp_cmd_dlls_dir}")
       # only add to the path if it is not already in the path
-      if(NOT "$ENV{PATH}" MATCHES "${gp_cmd_dlls_dir}")
+      set(gp_found_cmd_dlls_dir 0)
+      file(TO_CMAKE_PATH "$ENV{PATH}" env_path)
+      foreach(gp_env_path_element ${env_path})
+        if("${gp_env_path_element}" STREQUAL "${gp_cmd_dlls_dir}")
+          set(gp_found_cmd_dlls_dir 1)
+        endif()
+      endforeach(gp_env_path_element)
+
+      if(NOT gp_found_cmd_dlls_dir)
+        file(TO_NATIVE_PATH "${gp_cmd_dlls_dir}" gp_cmd_dlls_dir)
         set(ENV{PATH} "$ENV{PATH};${gp_cmd_dlls_dir}")
-      endif(NOT "$ENV{PATH}" MATCHES "${gp_cmd_dlls_dir}")
+      endif()
     endif(EXISTS "${gp_cmd_dlls_dir}")
   endif("${gp_tool}" STREQUAL "dumpbin")
   #
@@ -625,12 +702,34 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
   string(REGEX REPLACE ";" "\\\\;" candidates "${gp_cmd_ov}")
   string(REGEX REPLACE "\n" "${eol_char};" candidates "${candidates}")
 
+  # check for install id and remove it from list, since otool -L can include a
+  # reference to itself
+  set(gp_install_id)
+  if("${gp_tool}" STREQUAL "otool")
+    execute_process(
+      COMMAND otool -D ${target}
+      OUTPUT_VARIABLE gp_install_id_ov
+      )
+    # second line is install name
+    string(REGEX REPLACE ".*:\n" "" gp_install_id "${gp_install_id_ov}")
+    if(gp_install_id)
+      # trim
+      string(REGEX MATCH "[^\n ].*[^\n ]" gp_install_id "${gp_install_id}")
+      #message("INSTALL ID is \"${gp_install_id}\"")
+    endif(gp_install_id)
+  endif("${gp_tool}" STREQUAL "otool")
+
   # Analyze each line for file names that match the regular expression:
   #
   foreach(candidate ${candidates})
   if("${candidate}" MATCHES "${gp_regex}")
+
     # Extract information from each candidate:
-    string(REGEX REPLACE "${gp_regex}" "\\1" raw_item "${candidate}")
+    if(gp_regex_error AND "${candidate}" MATCHES "${gp_regex_error}")
+      string(REGEX REPLACE "${gp_regex_fallback}" "\\1" raw_item "${candidate}")
+    else(gp_regex_error AND "${candidate}" MATCHES "${gp_regex_error}")
+      string(REGEX REPLACE "${gp_regex}" "\\1" raw_item "${candidate}")
+    endif(gp_regex_error AND "${candidate}" MATCHES "${gp_regex_error}")
 
     if(gp_regex_cmp_count GREATER 1)
       string(REGEX REPLACE "${gp_regex}" "\\2" raw_compat_version "${candidate}")
@@ -656,14 +755,18 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
     #
     set(add_item 1)
 
-    if(${exclude_system})
+    if("${item}" STREQUAL "${gp_install_id}")
+      set(add_item 0)
+    endif("${item}" STREQUAL "${gp_install_id}")
+
+    if(add_item AND ${exclude_system})
       set(type "")
       gp_resolved_file_type("${target}" "${item}" "${exepath}" "${dirs}" type)
 
       if("${type}" STREQUAL "system")
         set(add_item 0)
       endif("${type}" STREQUAL "system")
-    endif(${exclude_system})
+    endif(add_item AND ${exclude_system})
 
     if(add_item)
       list(LENGTH ${prerequisites_var} list_length_before_append)
@@ -706,19 +809,6 @@ function(get_prerequisites target prerequisites_var exclude_system recurse exepa
 endfunction(get_prerequisites)
 
 
-# list_prerequisites target all exclude_system verbose
-#
-#  ARGV0 (target) is the full path to an executable file
-#
-#  optional ARGV1 (all) is 0 or 1: 0 for direct prerequisites only,
-#   1 for all prerequisites recursively
-#
-#  optional ARGV2 (exclude_system) is 0 or 1: 0 to include "system"
-#   prerequisites , 1 to exclude them
-#
-#  optional ARGV3 (verbose) is 0 or 1: 0 to print only full path
-#   names of prerequisites, 1 to print extra information
-#
 function(list_prerequisites target)
   if("${ARGV1}" STREQUAL "")
     set(all 1)
@@ -771,17 +861,6 @@ function(list_prerequisites target)
 endfunction(list_prerequisites)
 
 
-# list_prerequisites_by_glob glob_arg glob_exp
-#
-#  glob_arg is GLOB or GLOB_RECURSE
-#
-#  glob_exp is a globbing expression used with "file(GLOB" to retrieve a list
-#   of matching files. If a matching file is executable, its prerequisites are
-#   listed.
-#
-# Any additional (optional) arguments provided are passed along as the
-# optional arguments to the list_prerequisites calls.
-#
 function(list_prerequisites_by_glob glob_arg glob_exp)
   message(STATUS "=============================================================================")
   message(STATUS "List prerequisites of executables matching ${glob_arg} '${glob_exp}'")

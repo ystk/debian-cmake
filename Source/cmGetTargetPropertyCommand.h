@@ -32,12 +32,12 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "get_target_property";}
+  virtual const char* GetName() const { return "get_target_property";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "Get a property from a target.";
     }
@@ -45,7 +45,7 @@ public:
   /**
    * Longer documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
       return
         "  get_target_property(VAR target property)\n"
@@ -55,7 +55,9 @@ public:
         "property values.  Properties are usually used to control how "
         "a target is built, but some query the target instead.  "
         "This command can get properties for any target so far created. "
-        "The targets do not need to be in the current CMakeLists.txt file.";
+        "The targets do not need to be in the current CMakeLists.txt file."
+        "\n"
+        "See also the more general get_property() command.";
     }
   
   cmTypeMacro(cmGetTargetPropertyCommand, cmCommand);

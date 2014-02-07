@@ -24,10 +24,19 @@
 #include <ctype.h>
 
 //----------------------------------------------------------------------------
+static unsigned int cmCTestGITVersion(unsigned int epic, unsigned int major,
+                                      unsigned int minor, unsigned int fix)
+{
+  // 1.6.5.0 maps to 10605000
+  return fix + minor*1000 + major*100000 + epic*10000000;
+}
+
+//----------------------------------------------------------------------------
 cmCTestGIT::cmCTestGIT(cmCTest* ct, std::ostream& log):
   cmCTestGlobalVC(ct, log)
 {
   this->PriorRev = this->Unknown;
+  this->CurrentGitVersion = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -85,6 +94,75 @@ void cmCTestGIT::NoteNewRevision()
 }
 
 //----------------------------------------------------------------------------
+std::string cmCTestGIT::FindGitDir()
+{
+  std::string git_dir;
+
+  // Run "git rev-parse --git-dir" to locate the real .git directory.
+  const char* git = this->CommandLineTool.c_str();
+  char const* git_rev_parse[] = {git, "rev-parse", "--git-dir", 0};
+  std::string git_dir_line;
+  OneLineParser rev_parse_out(this, "rev-parse-out> ", git_dir_line);
+  OutputLogger rev_parse_err(this->Log, "rev-parse-err> ");
+  if(this->RunChild(git_rev_parse, &rev_parse_out, &rev_parse_err))
+    {
+    git_dir = git_dir_line;
+    }
+  if(git_dir.empty())
+    {
+    git_dir = ".git";
+    }
+
+  // Git reports a relative path only when the .git directory is in
+  // the current directory.
+  if(git_dir[0] == '.')
+    {
+    git_dir = this->SourceDirectory + "/" + git_dir;
+    }
+#if defined(_WIN32) && !defined(__CYGWIN__)
+  else if(git_dir[0] == '/')
+    {
+    // Cygwin Git reports a full path that Cygwin understands, but we
+    // are a Windows application.  Run "cygpath" to get Windows path.
+    std::string cygpath_exe = cmSystemTools::GetFilenamePath(git);
+    cygpath_exe += "/cygpath.exe";
+    if(cmSystemTools::FileExists(cygpath_exe.c_str()))
+      {
+      char const* cygpath[] = {cygpath_exe.c_str(), "-w", git_dir.c_str(), 0};
+      OneLineParser cygpath_out(this, "cygpath-out> ", git_dir_line);
+      OutputLogger cygpath_err(this->Log, "cygpath-err> ");
+      if(this->RunChild(cygpath, &cygpath_out, &cygpath_err))
+        {
+        git_dir = git_dir_line;
+        }
+      }
+    }
+#endif
+  return git_dir;
+}
+
+//----------------------------------------------------------------------------
+std::string cmCTestGIT::FindTopDir()
+{
+  std::string top_dir = this->SourceDirectory;
+
+  // Run "git rev-parse --show-cdup" to locate the top of the tree.
+  const char* git = this->CommandLineTool.c_str();
+  char const* git_rev_parse[] = {git, "rev-parse", "--show-cdup", 0};
+  std::string cdup;
+  OneLineParser rev_parse_out(this, "rev-parse-out> ", cdup);
+  OutputLogger rev_parse_err(this->Log, "rev-parse-err> ");
+  if(this->RunChild(git_rev_parse, &rev_parse_out, &rev_parse_err) &&
+     !cdup.empty())
+    {
+    top_dir += "/";
+    top_dir += cdup;
+    top_dir = cmSystemTools::CollapseFullPath(top_dir.c_str());
+    }
+  return top_dir;
+}
+
+//----------------------------------------------------------------------------
 bool cmCTestGIT::UpdateByFetchAndReset()
 {
   const char* git = this->CommandLineTool.c_str();
@@ -121,11 +199,17 @@ bool cmCTestGIT::UpdateByFetchAndReset()
   // Identify the merge head that would be used by "git pull".
   std::string sha1;
   {
-  std::string fetch_head = this->SourceDirectory + "/.git/FETCH_HEAD";
+  std::string fetch_head = this->FindGitDir() + "/FETCH_HEAD";
   std::ifstream fin(fetch_head.c_str(), std::ios::in | std::ios::binary);
+  if(!fin)
+    {
+    this->Log << "Unable to open " << fetch_head << "\n";
+    return false;
+    }
   std::string line;
   while(sha1.empty() && cmSystemTools::GetLineFromStream(fin, line))
     {
+    this->Log << "FETCH_HEAD> " << line << "\n";
     if(line.find("\tnot-for-merge\t") == line.npos)
       {
       std::string::size_type pos = line.find('\t');
@@ -134,6 +218,11 @@ bool cmCTestGIT::UpdateByFetchAndReset()
         sha1 = line.substr(0, pos);
         }
       }
+    }
+  if(sha1.empty())
+    {
+    this->Log << "FETCH_HEAD has no upstream branch candidate!\n";
+    return false;
     }
   }
 
@@ -181,11 +270,47 @@ bool cmCTestGIT::UpdateImpl()
     return false;
     }
 
+  std::string top_dir = this->FindTopDir();
   const char* git = this->CommandLineTool.c_str();
-  char const* git_submodule[] = {git, "submodule", "update", 0};
+  const char* recursive = "--recursive";
+
+  // Git < 1.6.5.0 did not support --recursive
+  if(this->GetGitVersion() < cmCTestGITVersion(1,6,5,0))
+    {
+    recursive = 0;
+    // No need to require >= 1.6.5.0 if there are no submodules.
+    if(cmSystemTools::FileExists((top_dir + "/.gitmodules").c_str()))
+      {
+      this->Log << "Git < 1.6.5.0 cannot update submodules recursively\n";
+      }
+    }
+
+  char const* git_submodule[] = {git, "submodule", "update", recursive, 0};
   OutputLogger submodule_out(this->Log, "submodule-out> ");
   OutputLogger submodule_err(this->Log, "submodule-err> ");
-  return this->RunChild(git_submodule, &submodule_out, &submodule_err);
+  return this->RunChild(git_submodule, &submodule_out, &submodule_err,
+                        top_dir.c_str());
+}
+
+//----------------------------------------------------------------------------
+unsigned int cmCTestGIT::GetGitVersion()
+{
+  if(!this->CurrentGitVersion)
+    {
+    const char* git = this->CommandLineTool.c_str();
+    char const* git_version[] = {git, "--version", 0};
+    std::string version;
+    OneLineParser version_out(this, "version-out> ", version);
+    OutputLogger version_err(this->Log, "version-err> ");
+    unsigned int v[4] = {0,0,0,0};
+    if(this->RunChild(git_version, &version_out, &version_err) &&
+       sscanf(version.c_str(), "git version %u.%u.%u.%u",
+              &v[0], &v[1], &v[2], &v[3]) >= 3)
+      {
+      this->CurrentGitVersion = cmCTestGITVersion(v[0], v[1], v[2], v[3]);
+      }
+    }
+  return this->CurrentGitVersion;
 }
 
 //----------------------------------------------------------------------------
@@ -421,28 +546,15 @@ private:
       this->ParsePerson(this->Line.c_str()+7, author);
       this->Rev.Author = author.Name;
       this->Rev.EMail = author.EMail;
-
-      // Convert the time to a human-readable format that is also easy
-      // to machine-parse: "CCYY-MM-DD hh:mm:ss".
-      time_t seconds = static_cast<time_t>(author.Time);
-      struct tm* t = gmtime(&seconds);
-      char dt[1024];
-      sprintf(dt, "%04d-%02d-%02d %02d:%02d:%02d",
-              t->tm_year+1900, t->tm_mon+1, t->tm_mday,
-              t->tm_hour, t->tm_min, t->tm_sec);
-      this->Rev.Date = dt;
-
-      // Add the time-zone field "+zone" or "-zone".
-      char tz[32];
-      if(author.TimeZone >= 0)
-        {
-        sprintf(tz, " +%04ld", author.TimeZone);
-        }
-      else
-        {
-        sprintf(tz, " -%04ld", -author.TimeZone);
-        }
-      this->Rev.Date += tz;
+      this->Rev.Date = this->FormatDateTime(author);
+      }
+    else if(strncmp(this->Line.c_str(), "committer ", 10) == 0)
+      {
+      Person committer;
+      this->ParsePerson(this->Line.c_str()+10, committer);
+      this->Rev.Committer = committer.Name;
+      this->Rev.CommitterEMail = committer.EMail;
+      this->Rev.CommitDate = this->FormatDateTime(committer);
       }
     }
 
@@ -454,6 +566,32 @@ private:
       this->Rev.Log += this->Line.substr(4);
       }
     this->Rev.Log += "\n";
+    }
+
+  std::string FormatDateTime(Person const& person)
+    {
+    // Convert the time to a human-readable format that is also easy
+    // to machine-parse: "CCYY-MM-DD hh:mm:ss".
+    time_t seconds = static_cast<time_t>(person.Time);
+    struct tm* t = gmtime(&seconds);
+    char dt[1024];
+    sprintf(dt, "%04d-%02d-%02d %02d:%02d:%02d",
+            t->tm_year+1900, t->tm_mon+1, t->tm_mday,
+            t->tm_hour, t->tm_min, t->tm_sec);
+    std::string out = dt;
+
+    // Add the time-zone field "+zone" or "-zone".
+    char tz[32];
+    if(person.TimeZone >= 0)
+      {
+      sprintf(tz, " +%04ld", person.TimeZone);
+      }
+    else
+      {
+      sprintf(tz, " -%04ld", -person.TimeZone);
+      }
+    out += tz;
+    return out;
     }
 };
 

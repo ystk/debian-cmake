@@ -22,16 +22,22 @@ AddCMakeTest(ConfigureFile "")
 AddCMakeTest(SeparateArguments "")
 AddCMakeTest(ImplicitLinkInfo "")
 AddCMakeTest(ModuleNotices "")
+AddCMakeTest(GetProperty "")
 AddCMakeTest(If "")
 AddCMakeTest(String "")
 AddCMakeTest(Math "")
 AddCMakeTest(CMakeMinimumRequired "")
 AddCMakeTest(CompilerIdVendor "")
+AddCMakeTest(ProcessorCount "")
+AddCMakeTest(PushCheckState "")
+AddCMakeTest(While "")
 
 AddCMakeTest(FileDownload "")
 set_property(TEST CMake.FileDownload PROPERTY
   PASS_REGULAR_EXPRESSION "file already exists with expected MD5 sum"
   )
+
+AddCMakeTest(FileUpload "")
 
 if(HAVE_ELF_H)
   AddCMakeTest(ELF "")
@@ -51,14 +57,13 @@ AddCMakeTest(GetPrerequisites "${GetPrerequisites_PreArgs}")
 # suite. It detects if any changes have been made to the CMake source tree
 # by any previous configure, build or test steps.
 #
-if(do_cvs_tests OR GIT_EXECUTABLE)
+if(GIT_EXECUTABLE)
   string(REPLACE "\\" "/" ENV_HOME "$ENV{HOME}")
   set(CheckSourceTree_PreArgs
     "-DCMake_BINARY_DIR:PATH=${CMake_BINARY_DIR}"
     "-DCMake_SOURCE_DIR:PATH=${CMake_SOURCE_DIR}"
-    "-DCVS_EXECUTABLE:STRING=${CVS_EXECUTABLE}"
     "-DGIT_EXECUTABLE:STRING=${GIT_EXECUTABLE}"
     "-DHOME:STRING=${ENV_HOME}"
     )
   AddCMakeTest(CheckSourceTree "${CheckSourceTree_PreArgs}")
-endif(do_cvs_tests OR GIT_EXECUTABLE)
+endif()

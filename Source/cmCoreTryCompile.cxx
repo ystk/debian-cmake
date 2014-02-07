@@ -1,6 +1,6 @@
 /*============================================================================
   CMake - Cross Platform Makefile Generator
-  Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
+  Copyright 2000-2011 Kitware, Inc., Insight Software Consortium
 
   Distributed under the OSI-approved BSD License (the "License");
   see accompanying file Copyright.txt for details.
@@ -22,12 +22,13 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
   // which signature were we called with ?
   this->SrcFileSignature = false;
   unsigned int i;
-  
+
   const char* sourceDirectory = argv[2].c_str();
   const char* projectName = 0;
   const char* targetName = 0;
+  char targetNameBuf[64];
   int extraArgs = 0;
-  
+
   // look for CMAKE_FLAGS and store them
   std::vector<std::string> cmakeFlags;
   for (i = 3; i < argv.size(); ++i)
@@ -37,8 +38,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
      // CMAKE_FLAGS is the first argument because we need an argv[0] that
      // is not used, so it matches regular command line parsing which has
      // the program name as arg 0
-      for (; i < argv.size() && argv[i] != "COMPILE_DEFINITIONS" && 
-             argv[i] != "OUTPUT_VARIABLE"; 
+      for (; i < argv.size() && argv[i] != "COMPILE_DEFINITIONS" &&
+             argv[i] != "OUTPUT_VARIABLE";
            ++i)
         {
         extraArgs++;
@@ -56,7 +57,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       {
       if ( argv.size() <= (i+1) )
         {
-        cmSystemTools::Error(
+        this->Makefile->IssueMessage(cmake::FATAL_ERROR,
           "OUTPUT_VARIABLE specified but there is no variable");
         return -1;
         }
@@ -73,8 +74,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     if (argv[i] == "COMPILE_DEFINITIONS")
       {
       extraArgs++;
-      for (i = i + 1; i < argv.size() && argv[i] != "CMAKE_FLAGS" && 
-             argv[i] != "OUTPUT_VARIABLE"; 
+      for (i = i + 1; i < argv.size() && argv[i] != "CMAKE_FLAGS" &&
+             argv[i] != "OUTPUT_VARIABLE";
            ++i)
         {
         extraArgs++;
@@ -92,7 +93,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       {
       if ( argv.size() <= (i+1) )
         {
-        cmSystemTools::Error(
+        this->Makefile->IssueMessage(cmake::FATAL_ERROR,
           "COPY_FILE specified but there is no variable");
         return -1;
         }
@@ -101,7 +102,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       break;
       }
     }
-    
+
   // do we have a srcfile signature
   if (argv.size() - extraArgs == 3)
     {
@@ -120,28 +121,30 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     // only valid for srcfile signatures
     if (compileFlags.size())
       {
-      cmSystemTools::Error(
+      this->Makefile->IssueMessage(cmake::FATAL_ERROR,
         "COMPILE_FLAGS specified on a srcdir type TRY_COMPILE");
       return -1;
       }
     if (copyFile.size())
       {
-      cmSystemTools::Error("COPY_FILE specified on a srcdir type TRY_COMPILE");
+      this->Makefile->IssueMessage(cmake::FATAL_ERROR,
+        "COPY_FILE specified on a srcdir type TRY_COMPILE");
       return -1;
       }
     }
   // make sure the binary directory exists
   cmSystemTools::MakeDirectory(this->BinaryDirectory.c_str());
-  
+
   // do not allow recursive try Compiles
   if (this->BinaryDirectory == this->Makefile->GetHomeOutputDirectory())
     {
-    cmSystemTools::Error(
-      "Attempt at a recursive or nested TRY_COMPILE in directory ",
-      this->BinaryDirectory.c_str());
+    cmOStringStream e;
+    e << "Attempt at a recursive or nested TRY_COMPILE in directory\n"
+      << "  " << this->BinaryDirectory << "\n";
+    this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
     return -1;
     }
-  
+
   std::string outFileName = this->BinaryDirectory + "/CMakeLists.txt";
   // which signature are we using? If we are using var srcfile bindir
   if (this->SrcFileSignature)
@@ -149,42 +152,64 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     // remove any CMakeCache.txt files so we will have a clean test
     std::string ccFile = this->BinaryDirectory + "/CMakeCache.txt";
     cmSystemTools::RemoveFile(ccFile.c_str());
-    
-    // we need to create a directory and CMakeList file etc...
+
+    // we need to create a directory and CMakeLists file etc...
     // first create the directories
     sourceDirectory = this->BinaryDirectory.c_str();
 
-    // now create a CMakeList.txt file in that directory
+    // now create a CMakeLists.txt file in that directory
     FILE *fout = fopen(outFileName.c_str(),"w");
     if (!fout)
       {
-      cmSystemTools::Error("Failed to create CMakeList file for ", 
-                           outFileName.c_str());
-      cmSystemTools::ReportLastSystemError("");
+      cmOStringStream e;
+      e << "Failed to open\n"
+        << "  " << outFileName.c_str() << "\n"
+        << cmSystemTools::GetLastSystemError();
+      this->Makefile->IssueMessage(cmake::FATAL_ERROR, e.str());
       return -1;
       }
 
     std::string source = argv[2];
-    std::string ext = cmSystemTools::GetFilenameExtension(source);
+    std::string ext = cmSystemTools::GetFilenameLastExtension(source);
     const char* lang =(this->Makefile->GetCMakeInstance()->GetGlobalGenerator()
                         ->GetLanguageFromExtension(ext.c_str()));
     const char* def = this->Makefile->GetDefinition("CMAKE_MODULE_PATH");
-    fprintf(fout, "cmake_minimum_required(VERSION %u.%u)\n",
-            cmVersion::GetMajorVersion(), cmVersion::GetMinorVersion());
+    fprintf(fout, "cmake_minimum_required(VERSION %u.%u.%u.%u)\n",
+            cmVersion::GetMajorVersion(), cmVersion::GetMinorVersion(),
+            cmVersion::GetPatchVersion(), cmVersion::GetTweakVersion());
     if(def)
       {
       fprintf(fout, "SET(CMAKE_MODULE_PATH %s)\n", def);
       }
+
+    const char* rulesOverrideBase = "CMAKE_USER_MAKE_RULES_OVERRIDE";
+    std::string rulesOverrideLang =
+      rulesOverrideBase + (lang ? std::string("_") + lang : std::string(""));
+    if(const char* rulesOverridePath =
+       this->Makefile->GetDefinition(rulesOverrideLang.c_str()))
+      {
+      fprintf(fout, "SET(%s \"%s\")\n",
+              rulesOverrideLang.c_str(), rulesOverridePath);
+      }
+    else if(const char* rulesOverridePath2 =
+            this->Makefile->GetDefinition(rulesOverrideBase))
+      {
+      fprintf(fout, "SET(%s \"%s\")\n",
+              rulesOverrideBase, rulesOverridePath2);
+      }
+
     if(lang)
       {
       fprintf(fout, "PROJECT(CMAKE_TRY_COMPILE %s)\n", lang);
       }
     else
       {
+      fclose(fout);
       cmOStringStream err;
-      err << "Unknown extension \"" << ext << "\" for file \""
-          << source << "\".  TRY_COMPILE only works for enabled languages.\n"
-          << "Currently enabled languages are:";
+      err << "Unknown extension \"" << ext << "\" for file\n"
+          << "  " << source << "\n"
+          << "try_compile() works only for enabled languages.  "
+          << "Currently these are:\n ";
       std::vector<std::string> langs;
       this->Makefile->GetCMakeInstance()->GetGlobalGenerator()->
         GetEnabledLanguages(langs);
@@ -193,9 +218,8 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
         {
         err << " " << *l;
         }
-      err << "\nSee PROJECT command for help enabling other languages.";
-      cmSystemTools::Error(err.str().c_str());
-      fclose(fout);
+      err << "\nSee project() command to enable other languages.";
+      this->Makefile->IssueMessage(cmake::FATAL_ERROR, err.str());
       return -1;
       }
     std::string langFlags = "CMAKE_";
@@ -203,7 +227,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     langFlags += "_FLAGS";
     fprintf(fout, "SET(CMAKE_VERBOSE_MAKEFILE 1)\n");
     fprintf(fout, "SET(CMAKE_%s_FLAGS \"", lang);
-    const char* flags = this->Makefile->GetDefinition(langFlags.c_str()); 
+    const char* flags = this->Makefile->GetDefinition(langFlags.c_str());
     if(flags)
       {
       fprintf(fout, " %s ", flags);
@@ -224,14 +248,12 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       }
 
     /* for the TRY_COMPILEs we want to be able to specify the architecture.
-      So the user can set CMAKE_OSX_ARCHITECTURE to i386;ppc and then set 
+      So the user can set CMAKE_OSX_ARCHITECTURE to i386;ppc and then set
       CMAKE_TRY_COMPILE_OSX_ARCHITECTURE first to i386 and then to ppc to
-      have the tests run for each specific architecture. Since 
-      cmLocalGenerator doesn't allow building for "the other" 
-      architecture only via CMAKE_OSX_ARCHITECTURES,use to CMAKE_DO_TRY_COMPILE
-      to enforce it for this case here.
+      have the tests run for each specific architecture. Since
+      cmLocalGenerator doesn't allow building for "the other"
+      architecture only via CMAKE_OSX_ARCHITECTURES.
       */
-    cmakeFlags.push_back("-DCMAKE_DO_TRY_COMPILE=TRUE");
     if(this->Makefile->GetDefinition("CMAKE_TRY_COMPILE_OSX_ARCHITECTURES")!=0)
       {
       std::string flag="-DCMAKE_OSX_ARCHITECTURES=";
@@ -259,47 +281,59 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
       flag += this->Makefile->GetSafeDefinition("CMAKE_OSX_DEPLOYMENT_TARGET");
       cmakeFlags.push_back(flag);
       }
+    if(this->Makefile->GetDefinition("CMAKE_POSITION_INDEPENDENT_CODE")!=0)
+      {
+      fprintf(fout, "SET(CMAKE_POSITION_INDEPENDENT_CODE \"ON\")\n");
+      }
 
-    fprintf(fout, "ADD_EXECUTABLE(cmTryCompileExec \"%s\")\n",source.c_str());
-    fprintf(fout, 
-            "TARGET_LINK_LIBRARIES(cmTryCompileExec ${LINK_LIBRARIES})\n");
+    /* Use a random file name to avoid rapid creation and deletion
+       of the same executable name (some filesystems fail on that).  */
+    sprintf(targetNameBuf, "cmTryCompileExec%u",
+            cmSystemTools::RandomSeed());
+    targetName = targetNameBuf;
+
+    /* Put the executable at a known location (for COPY_FILE).  */
+    fprintf(fout, "SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY \"%s\")\n",
+            this->BinaryDirectory.c_str());
+    /* Create the actual executable.  */
+    fprintf(fout, "ADD_EXECUTABLE(%s \"%s\")\n", targetName, source.c_str());
+    fprintf(fout, "TARGET_LINK_LIBRARIES(%s ${LINK_LIBRARIES})\n",targetName);
     fclose(fout);
     projectName = "CMAKE_TRY_COMPILE";
-    targetName = "cmTryCompileExec";
-    // if the source is not in CMakeTmp 
+    // if the source is not in CMakeTmp
     if(source.find("CMakeTmp") == source.npos)
       {
       this->Makefile->AddCMakeDependFile(source.c_str());
       }
-    
+
     }
   // else the srcdir bindir project target signature
   else
     {
     projectName = argv[3].c_str();
-    
+
     if (argv.size() - extraArgs == 5)
       {
       targetName = argv[4].c_str();
       }
     }
-  
+
   bool erroroc = cmSystemTools::GetErrorOccuredFlag();
   cmSystemTools::ResetErrorOccuredFlag();
   std::string output;
   // actually do the try compile now that everything is setup
-  int res = this->Makefile->TryCompile(sourceDirectory, 
+  int res = this->Makefile->TryCompile(sourceDirectory,
                                        this->BinaryDirectory.c_str(),
-                                       projectName, 
-                                       targetName, 
+                                       projectName,
+                                       targetName,
                                        this->SrcFileSignature,
-                                       &cmakeFlags, 
+                                       &cmakeFlags,
                                        &output);
   if ( erroroc )
     {
     cmSystemTools::SetErrorOccured();
     }
-  
+
   // set the result var to the return value to indicate success or failure
   this->Makefile->AddCacheDefinition(argv[0].c_str(),
                                      (res == 0 ? "TRUE" : "FALSE"),
@@ -310,7 +344,7 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
     {
     this->Makefile->AddDefinition(outputVariable.c_str(), output.c_str());
     }
-  
+
   if (this->SrcFileSignature)
     {
     this->FindOutputFile(targetName);
@@ -322,17 +356,15 @@ int cmCoreTryCompile::TryCompileCode(std::vector<std::string> const& argv)
                                         copyFile.c_str()))
         {
         cmOStringStream emsg;
-        emsg << "Could not COPY_FILE.\n"
-          << "  OutputFile: '" << this->OutputFile.c_str() << "'\n"
-          << "    copyFile: '" << copyFile.c_str() << "'\n";
-
-        if (this->FindErrorMessage.size())
+        emsg << "Cannot copy output executable\n"
+             << "  '" << this->OutputFile.c_str() << "'\n"
+             << "to destination specified by COPY_FILE:\n"
+             << "  '" << copyFile.c_str() << "'\n";
+        if(!this->FindErrorMessage.empty())
           {
-          emsg << "\n";
-          emsg << this->FindErrorMessage.c_str() << "\n";
+          emsg << this->FindErrorMessage.c_str();
           }
-
-        cmSystemTools::Error(emsg.str().c_str());
+        this->Makefile->IssueMessage(cmake::FATAL_ERROR, emsg.str());
         return -1;
         }
       }
@@ -346,7 +378,7 @@ void cmCoreTryCompile::CleanupFiles(const char* binDir)
     {
     return;
     }
-  
+
   std::string bdir = binDir;
   if(bdir.find("CMakeTmp") == std::string::npos)
     {
@@ -355,7 +387,7 @@ void cmCoreTryCompile::CleanupFiles(const char* binDir)
       "CMakeTmp:", binDir);
     return;
     }
-  
+
   cmsys::Directory dir;
   dir.Load(binDir);
   size_t fileNum;
@@ -365,8 +397,8 @@ void cmCoreTryCompile::CleanupFiles(const char* binDir)
     if (strcmp(dir.GetFile(static_cast<unsigned long>(fileNum)),".") &&
         strcmp(dir.GetFile(static_cast<unsigned long>(fileNum)),".."))
       {
-      
-      if(deletedFiles.find( dir.GetFile(static_cast<unsigned long>(fileNum))) 
+
+      if(deletedFiles.find( dir.GetFile(static_cast<unsigned long>(fileNum)))
          == deletedFiles.end())
         {
         deletedFiles.insert(dir.GetFile(static_cast<unsigned long>(fileNum)));
@@ -376,31 +408,22 @@ void cmCoreTryCompile::CleanupFiles(const char* binDir)
         if(cmSystemTools::FileIsDirectory(fullPath.c_str()))
           {
           this->CleanupFiles(fullPath.c_str());
+          cmSystemTools::RemoveADirectory(fullPath.c_str());
           }
         else
           {
-          if(!cmSystemTools::RemoveFile(fullPath.c_str()))
+          // Sometimes anti-virus software hangs on to new files so we
+          // cannot delete them immediately.  Try a few times.
+          int tries = 5;
+          while(!cmSystemTools::RemoveFile(fullPath.c_str()) &&
+                --tries && cmSystemTools::FileExists(fullPath.c_str()))
             {
-            bool removed = false;
-            int numAttempts = 0;
-            // sometimes anti-virus software hangs on to
-            // new files and we can not delete them, so try
-            // 5 times with .5 second delay between tries.
-            while(!removed && numAttempts < 5)
-              {
-              cmSystemTools::Delay(500);
-              if(cmSystemTools::RemoveFile(fullPath.c_str()))
-                {
-                removed = true;
-                }
-              numAttempts++;
-              }
-            if(!removed)
-              {
-              std::string m = "Remove failed on file: ";
-              m += fullPath;
-              cmSystemTools::ReportLastSystemError(m.c_str());
-              }
+            cmSystemTools::Delay(500);
+            }
+          if(tries == 0)
+            {
+            std::string m = "Remove failed on file: " + fullPath;
+            cmSystemTools::ReportLastSystemError(m.c_str());
             }
           }
         }
@@ -449,18 +472,11 @@ void cmCoreTryCompile::FindOutputFile(const char* targetName)
     }
 
   cmOStringStream emsg;
-  emsg << "Unable to find executable for " << this->GetName() << ": tried \"";
+  emsg << "Unable to find the executable at any of:\n";
   for (unsigned int i = 0; i < searchDirs.size(); ++i)
     {
-    emsg << this->BinaryDirectory << searchDirs[i] << tmpOutputFile;
-    if (i < searchDirs.size() - 1)
-      {
-      emsg << "\" and \"";
-      }
-    else
-      {
-      emsg << "\".";
-      }
+    emsg << "  " << this->BinaryDirectory << searchDirs[i]
+         << tmpOutputFile << "\n";
     }
   this->FindErrorMessage = emsg.str();
   return;

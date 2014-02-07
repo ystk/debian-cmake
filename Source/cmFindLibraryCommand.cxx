@@ -16,6 +16,13 @@
 
 cmFindLibraryCommand::cmFindLibraryCommand()
 { 
+  this->EnvironmentPath = "LIB";
+}
+
+//----------------------------------------------------------------------------
+void cmFindLibraryCommand::GenerateDocumentation()
+{
+  this->cmFindBase::GenerateDocumentation();
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "FIND_XXX", "find_library");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
@@ -29,7 +36,7 @@ cmFindLibraryCommand::cmFindLibraryCommand()
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "XXX_SYSTEM", "LIB");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
-                               "CMAKE_SYSTEM_XXX_PATH", 
+                               "CMAKE_SYSTEM_XXX_PATH",
                                "CMAKE_SYSTEM_LIBRARY_PATH");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "SEARCH_XXX_DESC", "library");
@@ -37,18 +44,26 @@ cmFindLibraryCommand::cmFindLibraryCommand()
                                "SEARCH_XXX", "library");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "XXX_SUBDIR", "lib");
+  cmSystemTools::ReplaceString(
+    this->GenericDocumentation,
+    "XXX_EXTRA_PREFIX_ENTRY",
+    "   <prefix>/lib/<arch> if CMAKE_LIBRARY_ARCHITECTURE is set, and\n");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
-                               "CMAKE_FIND_ROOT_PATH_MODE_XXX", 
+                               "CMAKE_FIND_ROOT_PATH_MODE_XXX",
                                "CMAKE_FIND_ROOT_PATH_MODE_LIBRARY");
-
-  this->EnvironmentPath = "LIB";
-  this->GenericDocumentation += 
+  this->GenericDocumentation +=
     "\n"
     "If the library found is a framework, then VAR will be set to "
     "the full path to the framework <fullPath>/A.framework. "
     "When a full path to a framework is used as a library, "
     "CMake will use a -framework A, and a -F<fullPath> to "
-    "link the framework to the target. ";
+    "link the framework to the target."
+    "\n"
+    "If the global property FIND_LIBRARY_USE_LIB64_PATHS is set all search "
+    "paths will be tested as normal, with \"64/\" appended, and with all "
+    "matches of \"lib/\" replaced with \"lib64/\". This property is "
+    "automatically set for the platforms that are known to need it if at "
+    "least one of the languages supported by the PROJECT command is enabled.";
 }
 
 // cmFindLibraryCommand
@@ -155,11 +170,6 @@ void cmFindLibraryCommand::AddArchitecturePaths(const char* suffix)
 
 void cmFindLibraryCommand::AddLib64Paths()
 {  
-  if(!this->Makefile->GetLocalGenerator()->GetGlobalGenerator()->
-     GetLanguageEnabled("C"))
-    {
-    return;
-    }
   std::string voidsize =
     this->Makefile->GetSafeDefinition("CMAKE_SIZEOF_VOID_P");
   int size = atoi(voidsize.c_str());
@@ -350,13 +360,23 @@ void cmFindLibraryHelper::RegexFromList(std::string& out,
 //----------------------------------------------------------------------------
 bool cmFindLibraryHelper::HasValidSuffix(std::string const& name)
 {
-  // Check if the given name ends in a valid library suffix.
   for(std::vector<std::string>::const_iterator si = this->Suffixes.begin();
       si != this->Suffixes.end(); ++si)
     {
-    std::string const& suffix = *si;
-    if(name.length() > suffix.length() &&
-       name.substr(name.size()-suffix.length()) == suffix)
+    std::string suffix = *si;
+    if(name.length() <= suffix.length())
+      {
+      continue;
+      }
+    // Check if the given name ends in a valid library suffix.
+    if(name.substr(name.size()-suffix.length()) == suffix)
+      {
+      return true;
+      }
+    // Check if a valid library suffix is somewhere in the name,
+    // this may happen e.g. for versioned shared libraries: libfoo.so.2
+    suffix += ".";
+    if(name.find(suffix) != name.npos)
       {
       return true;
       }

@@ -99,6 +99,7 @@ public:
     int PreviousRuns;
     bool RunSerial;
     double Timeout;
+    bool ExplicitTimeout;
     int Index;
     //Requested number of process slots
     int Processors;
@@ -124,8 +125,17 @@ public:
     cmCTestTestProperties* Properties;
   };
 
-  // add configuraitons to a search path for an executable
-  static void AddConfigurations(cmCTest *ctest, 
+  struct cmCTestTestResultLess
+  {
+    bool operator() (const cmCTestTestResult &lhs,
+                     const cmCTestTestResult &rhs) const
+    {
+    return lhs.TestCount < rhs.TestCount;
+    }
+  };
+
+  // add configurations to a search path for an executable
+  static void AddConfigurations(cmCTest *ctest,
                                 std::vector<std::string> &attempted,
                                 std::vector<std::string> &attemptedConfigs,
                                 std::string filepath,
@@ -140,7 +150,7 @@ public:
 
   typedef std::vector<cmCTestTestProperties> ListOfTests;
 protected:
-  // comput a final test list
+  // compute a final test list
   virtual int PreProcessHandler();
   virtual int PostProcessHandler();
   virtual void GenerateTestCommand(std::vector<std::string>& args);
@@ -150,8 +160,6 @@ protected:
   void WriteTestResultFooter(std::ostream& os, cmCTestTestResult* result);
   // Write attached test files into the xml
   void AttachFiles(std::ostream& os, cmCTestTestResult* result);
-  // Helper function to encode attached test files
-  std::string EncodeFile(std::string file);
 
   //! Clean test output to specified length
   bool CleanTestOutput(std::string& output, size_t length);
@@ -204,7 +212,7 @@ private:
   // compute the lists of tests that will actually run
   // based on union regex and -I stuff
   void ComputeTestList();
-  
+
   bool GetValue(const char* tag,
                 std::string& value,
                 std::ifstream& fin);

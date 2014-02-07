@@ -83,7 +83,8 @@ void cmCTestRunTest::CompressOutput()
     reinterpret_cast<unsigned char*>(
     const_cast<char*>(this->ProcessOutput.c_str()));
   //zlib makes the guarantee that this is the maximum output size
-  int outSize = static_cast<int>(this->ProcessOutput.size() * 1.001 + 13);
+  int outSize = static_cast<int>(
+    static_cast<double>(this->ProcessOutput.size()) * 1.001 + 13.0);
   unsigned char* out = new unsigned char[outSize];
 
   strm.zalloc = Z_NULL;
@@ -92,6 +93,7 @@ void cmCTestRunTest::CompressOutput()
   ret = deflateInit(&strm, -1); //default compression level
   if (ret != Z_OK)
     {
+    delete[] out;
     return;
     }
 
@@ -105,6 +107,7 @@ void cmCTestRunTest::CompressOutput()
     {
     cmCTestLog(this->CTest, ERROR_MESSAGE, "Error during output "
       "compression. Sending uncompressed output." << std::endl);
+    delete[] out;
     return;
     }
 
@@ -134,7 +137,10 @@ void cmCTestRunTest::CompressOutput()
 //---------------------------------------------------------
 bool cmCTestRunTest::EndTest(size_t completed, size_t total, bool started)
 {
-  if (this->CTest->ShouldCompressTestOutput())
+  if ((!this->TestHandler->MemCheck &&
+      this->CTest->ShouldCompressTestOutput()) ||
+      (this->TestHandler->MemCheck &&
+      this->CTest->ShouldCompressMemCheckOutput()))
     {
     this->CompressOutput();
     }
@@ -263,16 +269,26 @@ bool cmCTestRunTest::EndTest(size_t completed, size_t total, bool started)
     {
     *this->TestHandler->LogFile << "Test time = " << buf << std::endl;
     }
+
+  // Set the working directory to the tests directory
+  std::string oldpath = cmSystemTools::GetCurrentWorkingDirectory();
+  cmSystemTools::ChangeDirectory(this->TestProperties->Directory.c_str());
+
   this->DartProcessing();
+
+  // restore working directory
+  cmSystemTools::ChangeDirectory(oldpath.c_str());
+
+
   // if this is doing MemCheck then all the output needs to be put into
   // Output since that is what is parsed by cmCTestMemCheckHandler
   if(!this->TestHandler->MemCheck && started)
     {
-      this->TestHandler->CleanTestOutput(this->ProcessOutput, 
-          static_cast<size_t>
-          (this->TestResult.Status == cmCTestTestHandler::COMPLETED ? 
-          this->TestHandler->CustomMaximumPassedTestOutputSize :
-          this->TestHandler->CustomMaximumFailedTestOutputSize));
+    this->TestHandler->CleanTestOutput(this->ProcessOutput,
+      static_cast<size_t>
+      (this->TestResult.Status == cmCTestTestHandler::COMPLETED ?
+      this->TestHandler->CustomMaximumPassedTestOutputSize :
+      this->TestHandler->CustomMaximumFailedTestOutputSize));
     }
   this->TestResult.Reason = reason;
   if (this->TestHandler->LogFile)
@@ -321,7 +337,8 @@ bool cmCTestRunTest::EndTest(size_t completed, size_t total, bool started)
   // record the results in TestResult 
   if(started)
     {
-    bool compress = this->CompressionRatio < 1 &&
+    bool compress = !this->TestHandler->MemCheck &&
+      this->CompressionRatio < 1 &&
       this->CTest->ShouldCompressTestOutput();
     this->TestResult.Output = compress ? this->CompressedOutput 
       : this->ProcessOutput;
@@ -342,13 +359,14 @@ bool cmCTestRunTest::EndTest(size_t completed, size_t total, bool started)
 //----------------------------------------------------------------------
 void cmCTestRunTest::ComputeWeightedCost()
 {
-  int prev = this->TestProperties->PreviousRuns;
-  float avgcost = this->TestProperties->Cost;
+  double prev = static_cast<double>(this->TestProperties->PreviousRuns);
+  double avgcost = static_cast<double>(this->TestProperties->Cost);
   double current = this->TestResult.ExecutionTime;
 
   if(this->TestResult.Status == cmCTestTestHandler::COMPLETED)
     {
-    this->TestProperties->Cost = ((prev * avgcost) + current) / (prev + 1);
+    this->TestProperties->Cost =
+      static_cast<float>(((prev * avgcost) + current) / (prev + 1.0));
     this->TestProperties->PreviousRuns++;
     }
 }
@@ -396,6 +414,30 @@ bool cmCTestRunTest::StartTest(size_t total)
   this->TestResult.TestCount = this->TestProperties->Index;  
   this->TestResult.Name = this->TestProperties->Name;
   this->TestResult.Path = this->TestProperties->Directory.c_str();
+
+  if(args.size() >= 2 && args[1] == "NOT_AVAILABLE")
+    {
+    this->TestProcess = new cmProcess;
+    std::string msg;
+    if(this->CTest->GetConfigType().empty())
+      {
+      msg = "Test not available without configuration.";
+      msg += "  (Missing \"-C <config>\"?)";
+      }
+    else
+      {
+      msg = "Test not available in configuration \"";
+      msg += this->CTest->GetConfigType();
+      msg += "\".";
+      }
+    *this->TestHandler->LogFile << msg << std::endl;
+    cmCTestLog(this->CTest, ERROR_MESSAGE, msg << std::endl);
+    this->TestResult.Output = msg;
+    this->TestResult.FullCommandLine = "";
+    this->TestResult.CompletionStatus = "Not Run";
+    this->TestResult.Status = cmCTestTestHandler::NOT_RUN;
+    return false;
+    }
   
   // Check if all required files exist
   for(std::vector<std::string>::iterator i =
@@ -443,7 +485,8 @@ bool cmCTestRunTest::StartTest(size_t total)
     {
     return false;
     }
-  return this->ForkProcess(timeout, &this->TestProperties->Environment);
+  return this->ForkProcess(timeout, this->TestProperties->ExplicitTimeout,
+                           &this->TestProperties->Environment);
 }
 
 //----------------------------------------------------------------------
@@ -469,7 +512,7 @@ void cmCTestRunTest::ComputeArguments()
       this->TestProperties->Args[1].c_str());
     ++j; //skip the executable (it will be actualCommand)
     }
-  this->TestCommand
+  std::string testCommand
     = cmSystemTools::ConvertToOutputPath(this->ActualCommand.c_str());
 
   //Prepends memcheck args to our command string
@@ -477,22 +520,24 @@ void cmCTestRunTest::ComputeArguments()
   for(std::vector<std::string>::iterator i = this->Arguments.begin();
       i != this->Arguments.end(); ++i)
     {
-    this->TestCommand += " ";
-    this->TestCommand += cmSystemTools::EscapeSpaces(i->c_str());
+    testCommand += " \"";
+    testCommand += *i;
+    testCommand += "\"";
     }
 
   for(;j != this->TestProperties->Args.end(); ++j)
     {
-    this->TestCommand += " ";
-    this->TestCommand += cmSystemTools::EscapeSpaces(j->c_str());
+    testCommand += " \"";
+    testCommand += *j;
+    testCommand += "\"";
     this->Arguments.push_back(*j);
     }
-  this->TestResult.FullCommandLine = this->TestCommand;
+  this->TestResult.FullCommandLine = testCommand;
 
   cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, std::endl
              << this->Index << ": "
              << (this->TestHandler->MemCheck?"MemCheck":"Test") 
-             << " command: " << this->TestCommand
+             << " command: " << testCommand
              << std::endl);
 }
 
@@ -569,7 +614,7 @@ double cmCTestRunTest::ResolveTimeout()
     {
     stop_time += 24*60*60;
     }
-  int stop_timeout = (stop_time - current_time) % (24*60*60);
+  int stop_timeout = static_cast<int>(stop_time - current_time) % (24*60*60);
   this->CTest->LastStopTimeout = stop_timeout;
 
   if(stop_timeout <= 0 || stop_timeout > this->CTest->LastStopTimeout)
@@ -584,7 +629,7 @@ double cmCTestRunTest::ResolveTimeout()
 }
 
 //----------------------------------------------------------------------
-bool cmCTestRunTest::ForkProcess(double testTimeOut,
+bool cmCTestRunTest::ForkProcess(double testTimeOut, bool explicitTimeout,
                      std::vector<std::string>* environment)
 {
   this->TestProcess = new cmProcess;
@@ -605,11 +650,15 @@ bool cmCTestRunTest::ForkProcess(double testTimeOut,
     {
     timeout = testTimeOut;
     }
-
   // always have at least 1 second if we got to here
   if (timeout <= 0)
     {
     timeout = 1;
+    }
+  // handle timeout explicitly set to 0
+  if (testTimeOut == 0 && explicitTimeout)
+    {
+    timeout = 0;
     }
   cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT, this->Index << ": "
              << "Test timeout computed to be: " << timeout << "\n");
@@ -622,7 +671,7 @@ bool cmCTestRunTest::ForkProcess(double testTimeOut,
 
   if (environment && environment->size()>0)
     {
-    cmSystemTools::AppendEnv(environment);
+    cmSystemTools::AppendEnv(*environment);
     }
 
   return this->TestProcess->StartProcess();

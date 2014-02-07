@@ -3,8 +3,8 @@ Title: Reference of CMake compatibility commands
 Section: Programming
 
 Format: HTML
-Index: /usr/share/doc/cmake-docs/cmake-compatcommands.html
-Files: /usr/share/doc/cmake-docs/cmake-compatcommands.html
+Index: /usr/share/doc/cmake-data/cmake-compatcommands.html
+Files: /usr/share/doc/cmake-data/cmake-compatcommands.html
 
 Format: Text
-Files: /usr/share/doc/cmake-docs/cmake-compatcommands.txt.gz
+Files: /usr/share/doc/cmake-data/cmake-compatcommands.txt.gz

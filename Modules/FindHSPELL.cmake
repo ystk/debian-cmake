@@ -21,7 +21,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 FIND_PATH(HSPELL_INCLUDE_DIR hspell.h)
@@ -32,12 +32,15 @@ IF (HSPELL_INCLUDE_DIR)
     FILE(READ "${HSPELL_INCLUDE_DIR}/hspell.h" HSPELL_H)
     STRING(REGEX REPLACE ".*#define HSPELL_VERSION_MAJOR ([0-9]+).*" "\\1" HSPELL_VERSION_MAJOR "${HSPELL_H}")
     STRING(REGEX REPLACE ".*#define HSPELL_VERSION_MINOR ([0-9]+).*" "\\1" HSPELL_VERSION_MINOR "${HSPELL_H}")
+    SET(HSPELL_VERSION_STRING "${HSPELL_VERSION_MAJOR}.${HSPELL_VERSION_MINOR}")
 ENDIF()
 
 # handle the QUIETLY and REQUIRED arguments and set HSPELL_FOUND to TRUE if 
 # all listed variables are TRUE
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(HSPELL DEFAULT_MSG HSPELL_LIBRARIES HSPELL_INCLUDE_DIR)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(HSPELL
+                                  REQUIRED_VARS HSPELL_LIBRARIES HSPELL_INCLUDE_DIR
+                                  VERSION_VAR HSPELL_VERSION_STRING)
 
 MARK_AS_ADVANCED(HSPELL_INCLUDE_DIR HSPELL_LIBRARIES)
 

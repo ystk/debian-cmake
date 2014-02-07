@@ -1,8 +1,4 @@
-hurd_platform.diff
-FindGTK2_pangommconfig.diff
-FindJNI_fix_libarch_determination.diff
-cpack_installed_size.diff
-FindPython_fix_#569321_and_#580503.diff
-add_libarchive_script.patch
-fix-CTestTestFailedSubmit-xmlrpc.diff
-fix_spelling_errors.patch
+FindBoost_add_-lpthread_#563479.diff
+multiarch_findgtk2_fix.diff
+FindPostgreSQL_665721.diff
+install_to_multiarch_libdir_on_kfreebsd_hurd.diff

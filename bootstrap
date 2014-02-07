@@ -1,7 +1,7 @@
 #!/bin/sh
 #=============================================================================
 # CMake - Cross Platform Makefile Generator
-# Copyright 2000-2009 Kitware, Inc., Insight Software Consortium
+# Copyright 2000-2011 Kitware, Inc., Insight Software Consortium
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -11,19 +11,21 @@
 # See the License for more information.
 #=============================================================================
 
+die() {
+  echo "$@" 1>&2 ; exit 1
+}
+
 # Version number extraction function.
 cmake_version_component()
 {
-  cat "${cmake_source_dir}/CMakeLists.txt" | sed -n "
+  cat "${cmake_source_dir}/Source/CMakeVersion.cmake" | sed -n "
 /^SET(CMake_VERSION_${1}/ {s/SET(CMake_VERSION_${1} *\([0-9]*\))/\1/;p;}
 "
 }
 
-cmake_date_stamp_component()
+cmake_toupper()
 {
-  cat "${cmake_source_dir}/Source/kwsys/kwsysDateStamp.cmake" | sed -n "
-/KWSYS_DATE_STAMP_${1}/  {s/^.* \([0-9][0-9]*\))$/\1/;p;}
-"
+    echo "$1" | sed 'y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/'
 }
 
 # Detect system and directory information.
@@ -37,9 +39,6 @@ cmake_version_minor="`cmake_version_component MINOR`"
 cmake_version_patch="`cmake_version_component PATCH`"
 cmake_version="${cmake_version_major}.${cmake_version_minor}.${cmake_version_patch}"
 cmake_version_tweak="`cmake_version_component TWEAK`"
-if [ "x$cmake_version_tweak" = "x" ]; then
-  cmake_version_tweak="`cmake_date_stamp_component YEAR``cmake_date_stamp_component MONTH``cmake_date_stamp_component DAY`"
-fi
 if [ "$cmake_version_tweak" != "0" ]; then
   cmake_version="${cmake_version}.${cmake_version_tweak}"
 fi
@@ -73,14 +72,14 @@ else
   cmake_system_darwin=false
 fi
 
-# Determine whether this is BeOS 
+# Determine whether this is BeOS
 if echo "${cmake_system}" | grep BeOS >/dev/null 2>&1; then
   cmake_system_beos=true
 else
   cmake_system_beos=false
 fi
 
-# Determine whether this is Haiku 
+# Determine whether this is Haiku
 if echo "${cmake_system}" | grep Haiku >/dev/null 2>&1; then
   cmake_system_haiku=true
 else
@@ -118,10 +117,20 @@ fi
 cmake_bootstrap_dir="${cmake_binary_dir}/Bootstrap${_cmk}"
 
 # Helper function to fix windows paths.
-cmake_fix_slashes ()
-{
-  echo "$1" | sed 's/\\/\//g'
-}
+case "${cmake_system}" in
+*MINGW*)
+  cmake_fix_slashes()
+  {
+    cmd //c echo "$(echo "$1" | sed 's/\\/\//g')" | sed 's/^"//;s/" *$//'
+  }
+  ;;
+*)
+  cmake_fix_slashes()
+  {
+    echo "$1" | sed 's/\\/\//g'
+  }
+  ;;
+esac
 
 # Choose the default install prefix.
 if ${cmake_system_mingw}; then
@@ -189,6 +198,7 @@ CMAKE_CXX_SOURCES="\
   cmExportInstallFileGenerator \
   cmInstallDirectoryGenerator \
   cmGeneratedFileStream \
+  cmGeneratorTarget \
   cmGeneratorExpression \
   cmGlobalGenerator \
   cmLocalGenerator \
@@ -210,11 +220,14 @@ CMAKE_CXX_SOURCES="\
   cmMakefileLibraryTargetGenerator \
   cmMakefileTargetGenerator \
   cmMakefileUtilityTargetGenerator \
+  cmOSXBundleGenerator \
+  cmNewLineStyle \
   cmBootstrapCommands \
   cmCommands \
   cmTarget \
   cmTest \
   cmCustomCommand \
+  cmCustomCommandGenerator \
   cmDocumentVariables \
   cmCacheManager \
   cmListFileCache \
@@ -226,6 +239,11 @@ CMAKE_CXX_SOURCES="\
   cmExprLexer \
   cmExprParser \
   cmExprParserHelper \
+  cmGlobalNinjaGenerator \
+  cmLocalNinjaGenerator \
+  cmNinjaTargetGenerator \
+  cmNinjaNormalTargetGenerator \
+  cmNinjaUtilityTargetGenerator \
 "
 
 if ${cmake_system_mingw}; then
@@ -285,7 +303,7 @@ KWSYS_IOS_FILES="
 cmake_usage()
 {
 echo '
-Usage: '"$0"' [options]
+Usage: '"$0"' [<options>...] [-- <cmake-options>...]
 Options: [defaults in brackets after descriptions]
 Configuration:
   --help                  print this message
@@ -293,11 +311,23 @@ Configuration:
   --verbose               display more information
   --parallel=n            bootstrap cmake in parallel, where n is
                           number of nodes [1]
-  --init=FILE             use FILE for cmake initialization
-  --system-libs           use system-installed third-party libraries
+  --enable-ccache         Enable ccache when building cmake
+  --init=FILE             load FILE as script to populate cache
+  --system-libs           use all system-installed third-party libraries
                           (for use only by package maintainers)
-  --no-system-libs        use cmake-provided third-party libraries
+  --no-system-libs        use all cmake-provided third-party libraries
                           (default)
+  --system-curl           use system-installed curl library
+  --no-system-curl        use cmake-provided curl library (default)
+  --system-expat          use system-installed expat library
+  --no-system-expat       use cmake-provided expat library (default)
+  --system-zlib           use system-installed zlib library
+  --no-system-zlib        use cmake-provided zlib library (default)
+  --system-bzip2          use system-installed bzip2 library
+  --no-system-bzip2       use cmake-provided bzip2 library (default)
+  --system-libarchive     use system-installed libarchive library
+  --no-system-libarchive  use cmake-provided libarchive library (default)
+
   --qt-gui                build the Qt-based GUI (requires Qt >= 4.2)
   --no-qt-gui             do not build the Qt-based GUI (default)
   --qt-qmake=<qmake>      use <qmake> as the qmake executable to find Qt
@@ -318,7 +348,7 @@ Directory and file names:
 # Display CMake bootstrap usage
 cmake_version_display()
 {
-  echo "CMake ${cmake_version}, Copyright 2000-2009 Kitware, Inc."
+  echo "CMake ${cmake_version}, Copyright 2000-2011 Kitware, Inc."
 }
 
 # Display CMake bootstrap error, display the log file and exit
@@ -327,7 +357,7 @@ cmake_error()
   res=$1
   shift 1
   echo "---------------------------------------------"
-  echo "Error when bootstrapping CMake:" 
+  echo "Error when bootstrapping CMake:"
   echo "$*"
   echo "---------------------------------------------"
   if [ -f cmake_bootstrap.log ]; then
@@ -346,7 +376,7 @@ cmake_replace_string ()
   SEARCHFOR="$3"
   REPLACEWITH="$4"
   if [ -f "${INFILE}" ] || ${cmake_system_openvms}; then
-    cat "${INFILE}" | 
+    cat "${INFILE}" |
       sed "s/\@${SEARCHFOR}\@/${REPLACEWITH}/g" > "${OUTFILE}${_tmp}"
     if [ -f "${OUTFILE}${_tmp}" ]; then
       if "${_diff}" "${OUTFILE}" "${OUTFILE}${_tmp}" > /dev/null 2> /dev/null ; then
@@ -369,9 +399,8 @@ cmake_kwsys_config_replace_string ()
   APPEND="$*"
   if [ -f "${INFILE}" ] || ${cmake_system_openvms}; then
     echo "${APPEND}" > "${OUTFILE}${_tmp}"
-    cat "${INFILE}" | 
+    cat "${INFILE}" |
       sed "/./ {s/\@KWSYS_NAMESPACE\@/cmsys/g;
-                s/@KWSYS_DO_NOT_CLEAN_PUTENV@/0/g;
                 s/@KWSYS_BUILD_SHARED@/${KWSYS_BUILD_SHARED}/g;
                 s/@KWSYS_LFS_AVAILABLE@/${KWSYS_LFS_AVAILABLE}/g;
                 s/@KWSYS_LFS_REQUESTED@/${KWSYS_LFS_REQUESTED}/g;
@@ -424,6 +453,12 @@ cmake_report ()
 cmake_escape ()
 {
   echo $1 | sed "s/ /\\\\ /g"
+}
+
+# Strip prefix from argument
+cmake_arg ()
+{
+  echo "$1" | sed "s/^${2-[^=]*=}//"
 }
 
 # Write message to the log
@@ -506,52 +541,36 @@ cmake_try_make ()
 # Parse arguments
 cmake_verbose=
 cmake_parallel_make=
+cmake_ccache_enabled=
 cmake_prefix_dir="${cmake_default_prefix}"
-for a in "$@"; do
-  if echo $a | grep "^--prefix=" > /dev/null 2> /dev/null; then
-    cmake_prefix_dir=`echo $a | sed "s/^--prefix=//"`
-    cmake_prefix_dir=`cmake_fix_slashes "${cmake_prefix_dir}"`
-  fi
-  if echo $a | grep "^--parallel=" > /dev/null 2> /dev/null; then
-    cmake_parallel_make=`echo $a | sed "s/^--parallel=//" | grep "[0-9][0-9]*"`
-  fi
-  if echo $a | grep "^--datadir=" > /dev/null 2> /dev/null; then
-    cmake_data_dir=`echo $a | sed "s/^--datadir=//"`
-  fi
-  if echo $a | grep "^--docdir=" > /dev/null 2> /dev/null; then
-    cmake_doc_dir=`echo $a | sed "s/^--docdir=//"`
-  fi
-  if echo $a | grep "^--mandir=" > /dev/null 2> /dev/null; then
-    cmake_man_dir=`echo $a | sed "s/^--mandir=//"`
-  fi
-  if echo $a | grep "^--init=" > /dev/null 2> /dev/null; then
-    cmake_init_file=`echo $a | sed "s/^--init=//"`
-  fi
-  if echo $a | grep "^--system-libs" > /dev/null 2> /dev/null; then
-    cmake_bootstrap_system_libs="-DCMAKE_USE_SYSTEM_LIBRARIES=1"
-  fi
-  if echo $a | grep "^--no-system-libs" > /dev/null 2> /dev/null; then
-    cmake_bootstrap_system_libs="-DCMAKE_USE_SYSTEM_LIBRARIES=0"
-  fi
-  if echo $a | grep "^--qt-gui" > /dev/null 2> /dev/null; then
-    cmake_bootstrap_qt_gui="1"
-  fi
-  if echo $a | grep "^--no-qt-gui" > /dev/null 2> /dev/null; then
-    cmake_bootstrap_qt_gui="0"
-  fi
-  if echo $a | grep "^--qt-qmake=" > /dev/null 2> /dev/null; then
-    cmake_bootstrap_qt_qmake=`echo $a | sed "s/^--qt-qmake=//"`
-  fi
-  if echo $a | grep "^--help" > /dev/null 2> /dev/null; then
-    cmake_usage
-  fi
-  if echo $a | grep "^--version" > /dev/null 2> /dev/null; then
-    cmake_version_display
-    exit 2
-  fi
-  if echo $a | grep "^--verbose" > /dev/null 2> /dev/null; then
-    cmake_verbose=TRUE
-  fi
+while test $# != 0; do
+  case "$1" in
+  --prefix=*) dir=`cmake_arg "$1"`
+              cmake_prefix_dir=`cmake_fix_slashes "$dir"` ;;
+  --parallel=*) cmake_parallel_make=`cmake_arg "$1"` ;;
+  --datadir=*) cmake_data_dir=`cmake_arg "$1"` ;;
+  --docdir=*) cmake_doc_dir=`cmake_arg "$1"` ;;
+  --mandir=*) cmake_man_dir=`cmake_arg "$1"` ;;
+  --init=*) cmake_init_file=`cmake_arg "$1"` ;;
+  --system-libs) cmake_bootstrap_system_libs="${cmake_bootstrap_system_libs} -DCMAKE_USE_SYSTEM_LIBRARIES=1" ;;
+  --no-system-libs) cmake_bootstrap_system_libs="${cmake_bootstrap_system_libs} -DCMAKE_USE_SYSTEM_LIBRARIES=0" ;;
+  --system-bzip2|--system-curl|--system-expat|--system-libarchive|--system-zlib)
+    lib=`cmake_arg "$1" "--system-"`
+    cmake_bootstrap_system_libs="${cmake_bootstrap_system_libs} -DCMAKE_USE_SYSTEM_LIBRARY_`cmake_toupper $lib`=1" ;;
+  --no-system-bzip2|--no-system-curl|--no-system-expat|--no-system-libarchive|--no-system-zlib)
+    lib=`cmake_arg "$1" "--no-system-"`
+    cmake_bootstrap_system_libs="${cmake_bootstrap_system_libs} -DCMAKE_USE_SYSTEM_LIBRARY_`cmake_toupper $lib`=0" ;;
+  --qt-gui) cmake_bootstrap_qt_gui="1" ;;
+  --no-qt-gui) cmake_bootstrap_qt_gui="0" ;;
+  --qt-qmake=*) cmake_bootstrap_qt_qmake=`cmake_arg "$1"` ;;
+  --help) cmake_usage ;;
+  --version) cmake_version_display ; exit 2 ;;
+  --verbose) cmake_verbose=TRUE ;;
+  --enable-ccache) cmake_ccache_enabled=TRUE ;;
+  --) shift; break ;;
+  *) die "Unknown option: $1" ;;
+  esac
+  shift
 done
 
 # If verbose, display some information about bootstrap
@@ -635,9 +654,9 @@ if ${cmake_system_cygwin}; then
   cmake_ld_flags="${LDFLAGS} -Wl,--enable-auto-import"
 fi
 
-# Add Carbon framework on Darwin
+# Add CoreFoundation framework on Darwin
 if ${cmake_system_darwin}; then
-  cmake_ld_flags="${LDFLAGS} -framework Carbon"  
+  cmake_ld_flags="${LDFLAGS} -framework CoreFoundation"
 fi
 
 # Add BeOS toolkits...
@@ -650,11 +669,74 @@ if ${cmake_system_haiku}; then
   cmake_ld_flags="${LDFLAGS} -lroot -lbe"
 fi
 
+#-----------------------------------------------------------------------------
+# Detect known toolchains on some platforms.
+cmake_toolchains=''
+case "${cmake_system}" in
+  *AIX*)   cmake_toolchains='XL GNU' ;;
+  *CYGWIN*) cmake_toolchains='GNU' ;;
+  *Darwin*) cmake_toolchains='GNU Clang' ;;
+  *Linux*) cmake_toolchains='GNU Clang XL PGI PathScale' ;;
+  *MINGW*) cmake_toolchains='GNU' ;;
+esac
+
+# Toolchain compiler name table.
+cmake_toolchain_Clang_CC='clang'
+cmake_toolchain_Clang_CXX='clang++'
+cmake_toolchain_GNU_CC='gcc'
+cmake_toolchain_GNU_CXX='g++'
+cmake_toolchain_PGI_CC='pgcc'
+cmake_toolchain_PGI_CXX='pgCC'
+cmake_toolchain_PathScale_CC='pathcc'
+cmake_toolchain_PathScale_CXX='pathCC'
+cmake_toolchain_XL_CC='xlc'
+cmake_toolchain_XL_CXX='xlC'
+
+cmake_toolchain_try()
+{
+  tc="$1"
+  TMPFILE=`cmake_tmp_file`
+
+  eval "tc_CC=\${cmake_toolchain_${tc}_CC}"
+  echo 'int main() { return 0; }' > "${TMPFILE}.c"
+  cmake_try_run "$tc_CC" "" "${TMPFILE}.c" >> cmake_bootstrap.log 2>&1
+  tc_result_CC="$?"
+  rm -f "${TMPFILE}.c"
+  test "${tc_result_CC}" = "0" || return 1
+
+  eval "tc_CXX=\${cmake_toolchain_${tc}_CXX}"
+  echo 'int main() { return 0; }' > "${TMPFILE}.cpp"
+  cmake_try_run "$tc_CXX" "" "${TMPFILE}.cpp" >> cmake_bootstrap.log 2>&1
+  tc_result_CXX="$?"
+  rm -f "${TMPFILE}.cpp"
+  test "${tc_result_CXX}" = "0" || return 1
+
+  cmake_toolchain="$tc"
+}
+
+cmake_toolchain_detect()
+{
+  cmake_toolchain=
+  for tc in ${cmake_toolchains}; do
+    echo "Checking for $tc toolchain" >> cmake_bootstrap.log 2>&1
+    cmake_toolchain_try "$tc" &&
+    echo "Found $tc toolchain" &&
+    break
+  done
+}
+
+if [ -z "${CC}" -a -z "${CXX}" ]; then
+  cmake_toolchain_detect
+fi
+
+#-----------------------------------------------------------------------------
 # Test C compiler
 cmake_c_compiler=
 
 # If CC is set, use that for compiler, otherwise use list of known compilers
-if [ -n "${CC}" ]; then
+if [ -n "${cmake_toolchain}" ]; then
+  eval cmake_c_compilers="\${cmake_toolchain_${cmake_toolchain}_CC}"
+elif [ -n "${CC}" ]; then
   cmake_c_compilers="${CC}"
 else
   cmake_c_compilers="${CMAKE_KNOWN_C_COMPILERS}"
@@ -697,13 +779,16 @@ See cmake_bootstrap.log for compilers attempted.
 fi
 echo "C compiler on this system is: ${cmake_c_compiler} ${cmake_c_flags}"
 
+#-----------------------------------------------------------------------------
 # Test CXX compiler
 cmake_cxx_compiler=
 
 # On Mac OSX, CC is the same as cc, so make sure not to try CC as c++ compiler.
 
 # If CC is set, use that for compiler, otherwise use list of known compilers
-if [ -n "${CXX}" ]; then
+if [ -n "${cmake_toolchain}" ]; then
+  eval cmake_cxx_compilers="\${cmake_toolchain_${cmake_toolchain}_CXX}"
+elif [ -n "${CXX}" ]; then
   cmake_cxx_compilers="${CXX}"
 else
   cmake_cxx_compilers="${CMAKE_KNOWN_CXX_COMPILERS}"
@@ -718,7 +803,7 @@ echo '
 # include <iostream.h>
 #endif
 
-class NeedCXX 
+class NeedCXX
 {
 public:
   NeedCXX() { this->Foo = 1; }
@@ -754,6 +839,7 @@ See cmake_bootstrap.log for compilers attempted."
 fi
 echo "C++ compiler on this system is: ${cmake_cxx_compiler} ${cmake_cxx_flags}"
 
+#-----------------------------------------------------------------------------
 # Test Make
 
 cmake_make_processor=
@@ -772,7 +858,7 @@ mkdir "${cmake_bootstrap_dir}/${TMPFILE}"
 cd "${cmake_bootstrap_dir}/${TMPFILE}"
 echo '
 test: test.c
-	"'"${cmake_c_compiler}"'" -o test test.c
+	"'"${cmake_c_compiler}"'" '"${cmake_ld_flags} ${cmake_c_flags}"' -o test test.c
 '>"Makefile"
 echo '
 #include <stdio.h>
@@ -967,6 +1053,9 @@ KWSYS_STL_HAS_ALLOCATOR_NONTEMPLATE=0
 KWSYS_STL_HAS_ALLOCATOR_REBIND=0
 KWSYS_STL_HAS_ALLOCATOR_MAX_SIZE_ARGUMENT=0
 KWSYS_STL_HAS_ALLOCATOR_OBJECTS=0
+KWSYS_CXX_HAS_SETENV=0
+KWSYS_CXX_HAS_UNSETENV=0
+KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H=0
 KWSYS_CXX_HAS_CSTDDEF=0
 KWSYS_CXX_HAS_NULL_TEMPLATE_ARGS=0
 KWSYS_CXX_HAS_MEMBER_TEMPLATES=0
@@ -976,6 +1065,33 @@ KWSYS_CXX_HAS_ARGUMENT_DEPENDENT_LOOKUP=0
 # Hardcode these kwsys features.  They work on all known UNIX compilers anyway.
 KWSYS_STL_STRING_HAVE_ISTREAM=1
 KWSYS_STL_STRING_HAVE_OSTREAM=1
+
+if cmake_try_run "${cmake_cxx_compiler}" \
+  "${cmake_cxx_flags} -DTEST_KWSYS_CXX_HAS_SETENV" \
+  "${cmake_source_dir}/Source/kwsys/kwsysPlatformTestsCXX.cxx" >> cmake_bootstrap.log 2>&1; then
+  KWSYS_CXX_HAS_SETENV=1
+  echo "${cmake_cxx_compiler} has setenv"
+else
+  echo "${cmake_cxx_compiler} does not have setenv"
+fi
+
+if cmake_try_run "${cmake_cxx_compiler}" \
+  "${cmake_cxx_flags} -DTEST_KWSYS_CXX_HAS_UNSETENV" \
+  "${cmake_source_dir}/Source/kwsys/kwsysPlatformTestsCXX.cxx" >> cmake_bootstrap.log 2>&1; then
+  KWSYS_CXX_HAS_UNSETENV=1
+  echo "${cmake_cxx_compiler} has unsetenv"
+else
+  echo "${cmake_cxx_compiler} does not have unsetenv"
+fi
+
+if cmake_try_run "${cmake_cxx_compiler}" \
+  "${cmake_cxx_flags} -DTEST_KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H" \
+  "${cmake_source_dir}/Source/kwsys/kwsysPlatformTestsCXX.cxx" >> cmake_bootstrap.log 2>&1; then
+  KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H=1
+  echo "${cmake_cxx_compiler} has environ in stdlib.h"
+else
+  echo "${cmake_cxx_compiler} does not have environ in stdlib.h"
+fi
 
 if cmake_try_run "${cmake_cxx_compiler}" \
   "${cmake_cxx_flags} -DTEST_KWSYS_STL_HAVE_STD" \
@@ -1277,12 +1393,12 @@ cmake_kwsys_config_replace_string \
   "${cmake_bootstrap_dir}/cmsys/Configure.h" \
   "${cmake_compiler_settings_comment}"
 
-for a in ${KWSYS_FILES}; do 
+for a in ${KWSYS_FILES}; do
   cmake_replace_string "${cmake_source_dir}/Source/kwsys/${a}.in" \
      "${cmake_bootstrap_dir}/cmsys/${a}" KWSYS_NAMESPACE cmsys
 done
 
-for a in ${KWSYS_IOS_FILES}; do 
+for a in ${KWSYS_IOS_FILES}; do
   cmake_replace_string "${cmake_source_dir}/Source/kwsys/kwsys_ios_${a}.h.in" \
      "${cmake_bootstrap_dir}/cmsys/ios/${a}" KWSYS_NAMESPACE cmsys
 done
@@ -1293,7 +1409,7 @@ cmake_replace_string "${cmake_source_dir}/Source/kwsys/kwsys_stl.hxx.in" \
 cmake_replace_string "${cmake_bootstrap_dir}/cmsys/stl/stl.hxx_a" \
    "${cmake_bootstrap_dir}/cmsys/stl/stl.hxx_b" KWSYS_NAMESPACE cmsys
 
-for a in string vector map algorithm; do
+for a in string vector set map algorithm; do
   cmake_replace_string "${cmake_bootstrap_dir}/cmsys/stl/stl.hxx_b" \
     "${cmake_bootstrap_dir}/cmsys/stl/${a}" KWSYS_STL_HEADER ${a}
 done
@@ -1324,6 +1440,7 @@ if [ "x${cmake_cxx_flags}" != "x" ]; then
 fi
 
 cmake_c_flags_String="-DKWSYS_STRING_C"
+cmake_cxx_flags_SystemTools="-DKWSYS_CXX_HAS_SETENV=${KWSYS_CXX_HAS_SETENV} -DKWSYS_CXX_HAS_UNSETENV=${KWSYS_CXX_HAS_UNSETENV} -DKWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H=${KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H}"
 cmake_c_flags="${cmake_c_flags}-I`cmake_escape \"${cmake_bootstrap_dir}\"` -I`cmake_escape \"${cmake_source_dir}/Source\"` \
   -I`cmake_escape \"${cmake_bootstrap_dir}\"`"
 cmake_cxx_flags="${cmake_cxx_flags} -I`cmake_escape \"${cmake_bootstrap_dir}\"` -I`cmake_escape \"${cmake_source_dir}/Source\"` \
@@ -1349,8 +1466,9 @@ for a in ${KWSYS_C_SOURCES} ${KWSYS_C_MINGW_SOURCES}; do
 done
 for a in ${KWSYS_CXX_SOURCES}; do
   src=`cmake_escape "${cmake_source_dir}/Source/kwsys/${a}.cxx"`
+  src_flags=`eval echo \\${cmake_cxx_flags_\${a}}`
   echo "${a}.o : ${src} ${dep}" >> "${cmake_bootstrap_dir}/Makefile"
-  echo "	${cmake_cxx_compiler} ${cmake_cxx_flags} -DKWSYS_NAMESPACE=cmsys -c ${src} -o ${a}.o" >> "${cmake_bootstrap_dir}/Makefile"
+  echo "	${cmake_cxx_compiler} ${cmake_cxx_flags} -DKWSYS_NAMESPACE=cmsys ${src_flags} -c ${src} -o ${a}.o" >> "${cmake_bootstrap_dir}/Makefile"
 done
 if ${cmake_system_mingw}; then
   src=`cmake_escape "${cmake_bootstrap_dir}/cmsysProcessFwd9xEnc.c"`
@@ -1420,13 +1538,21 @@ cd "${cmake_binary_dir}"
 # build with same compiler and make
 CC="${cmake_c_compiler}"
 CXX="${cmake_cxx_compiler}"
+if [ -n "${cmake_ccache_enabled}" ]; then
+  CC="ccache ${CC}"
+  CXX="ccache ${CXX}"
+fi
 MAKE="${cmake_make_processor}"
 export CC
 export CXX
 export MAKE
 
 # Run bootstrap CMake to configure real CMake
-"${cmake_bootstrap_dir}/cmake" "${cmake_source_dir}" "-C${cmake_bootstrap_dir}/InitialCacheFlags.cmake" "-G${cmake_bootstrap_generator}" ${cmake_bootstrap_system_libs}
+cmake_options="-DCMAKE_BOOTSTRAP=1"
+if [ -n "${cmake_verbose}" ]; then
+  cmake_options="${cmake_options} -DCMAKE_VERBOSE_MAKEFILE=1"
+fi
+"${cmake_bootstrap_dir}/cmake" "${cmake_source_dir}" "-C${cmake_bootstrap_dir}/InitialCacheFlags.cmake" "-G${cmake_bootstrap_generator}" ${cmake_options} ${cmake_bootstrap_system_libs} "$@"
 RES=$?
 if [ "${RES}" -ne "0" ]; then
   cmake_error 11 "Problem while running initial CMake"

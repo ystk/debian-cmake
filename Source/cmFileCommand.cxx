@@ -12,7 +12,9 @@
 #include "cmFileCommand.h"
 #include "cmake.h"
 #include "cmHexFileConverter.h"
+#include "cmInstallType.h"
 #include "cmFileTimeComparison.h"
+#include "cmCryptoHash.h"
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 #include "cm_curl.h"
@@ -22,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <cmsys/auto_ptr.hxx>
 #include <cmsys/Directory.hxx>
 #include <cmsys/Glob.hxx>
 #include <cmsys/RegularExpression.hxx>
@@ -75,9 +78,22 @@ bool cmFileCommand
     {
     return this->HandleDownloadCommand(args);
     }
+  else if ( subCommand == "UPLOAD" )
+    {
+    return this->HandleUploadCommand(args);
+    }
   else if ( subCommand == "READ" )
     {
     return this->HandleReadCommand(args);
+    }
+  else if ( subCommand == "MD5" ||
+            subCommand == "SHA1" ||
+            subCommand == "SHA224" ||
+            subCommand == "SHA256" ||
+            subCommand == "SHA384" ||
+            subCommand == "SHA512" )
+    {
+    return this->HandleHashCommand(args);
     }
   else if ( subCommand == "STRINGS" )
     {
@@ -284,7 +300,7 @@ bool cmFileCommand::HandleReadCommand(std::vector<std::string> const& args)
     offset = atoi(offsetArg.GetCString());
     }
 
-  file.seekg(offset);
+  file.seekg(offset, std::ios::beg); // explicit ios::beg for IBM VisualAge 6
 
   std::string output;
 
@@ -332,6 +348,41 @@ bool cmFileCommand::HandleReadCommand(std::vector<std::string> const& args)
     }
   this->Makefile->AddDefinition(variable.c_str(), output.c_str());
   return true;
+}
+
+//----------------------------------------------------------------------------
+bool cmFileCommand::HandleHashCommand(std::vector<std::string> const& args)
+{
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+  if(args.size() != 3)
+    {
+    cmOStringStream e;
+    e << args[0] << " requires a file name and output variable";
+    this->SetError(e.str().c_str());
+    return false;
+    }
+
+  cmsys::auto_ptr<cmCryptoHash> hash(cmCryptoHash::New(args[0].c_str()));
+  if(hash.get())
+    {
+    std::string out = hash->HashFile(args[1].c_str());
+    if(!out.empty())
+      {
+      this->Makefile->AddDefinition(args[2].c_str(), out.c_str());
+      return true;
+      }
+    cmOStringStream e;
+    e << args[0] << " failed to read file \"" << args[1] << "\": "
+      << cmSystemTools::GetLastSystemError();
+    this->SetError(e.str().c_str());
+    }
+  return false;
+#else
+  cmOStringStream e;
+  e << args[0] << " not available during bootstrap";
+  this->SetError(e.str().c_str());
+  return false;
+#endif
 }
 
 //----------------------------------------------------------------------------
@@ -952,7 +1003,9 @@ protected:
     // Match rules are case-insensitive on some platforms.
 #if defined(_WIN32) || defined(__APPLE__) || defined(__CYGWIN__)
     std::string lower = cmSystemTools::LowerCase(file);
-    file = lower.c_str();
+    const char* file_to_match = lower.c_str();
+#else
+    const char* file_to_match = file;
 #endif
 
     // Collect properties from all matching rules.
@@ -961,7 +1014,7 @@ protected:
     for(std::vector<MatchRule>::iterator mr = this->MatchRules.begin();
         mr != this->MatchRules.end(); ++mr)
       {
-      if(mr->Regex.find(file))
+      if(mr->Regex.find(file_to_match))
         {
         matched = true;
         result.Exclude |= mr->Properties.Exclude;
@@ -1640,7 +1693,7 @@ struct cmFileInstaller: public cmFileCopier
 {
   cmFileInstaller(cmFileCommand* command):
     cmFileCopier(command, "INSTALL"),
-    InstallType(cmTarget::INSTALL_FILES),
+    InstallType(cmInstallType_FILES),
     Optional(false),
     DestDirLength(0)
     {
@@ -1661,7 +1714,7 @@ struct cmFileInstaller: public cmFileCopier
     }
 
 protected:
-  cmTarget::TargetType InstallType;
+  cmInstallType InstallType;
   bool Optional;
   int DestDirLength;
   std::string Rename;
@@ -1695,7 +1748,7 @@ protected:
   virtual bool Install(const char* fromFile, const char* toFile)
     {
     // Support installing from empty source to make a directory.
-    if(this->InstallType == cmTarget::INSTALL_DIRECTORY && !*fromFile)
+    if(this->InstallType == cmInstallType_DIRECTORY && !*fromFile)
       {
       return this->InstallDirectory(fromFile, toFile, MatchProperties());
       }
@@ -1707,7 +1760,7 @@ protected:
   {
     DoingType = DoingLast1,
     DoingRename,
-    DoingSelf24
+    DoingLast2
   };
   virtual bool CheckKeyword(std::string const& arg);
   virtual bool CheckValue(std::string const& arg);
@@ -1717,14 +1770,14 @@ protected:
     // Add execute permissions based on the target type.
     switch(this->InstallType)
       {
-      case cmTarget::SHARED_LIBRARY:
-      case cmTarget::MODULE_LIBRARY:
+      case cmInstallType_SHARED_LIBRARY:
+      case cmInstallType_MODULE_LIBRARY:
         if(this->Makefile->IsOn("CMAKE_INSTALL_SO_NO_EXE"))
           {
           break;
           }
-      case cmTarget::EXECUTABLE:
-      case cmTarget::INSTALL_PROGRAMS:
+      case cmInstallType_EXECUTABLE:
+      case cmInstallType_PROGRAMS:
         this->FilePermissions |= mode_owner_execute;
         this->FilePermissions |= mode_group_execute;
         this->FilePermissions |= mode_world_execute;
@@ -1746,8 +1799,8 @@ bool cmFileInstaller::Parse(std::vector<std::string> const& args)
 
   if(!this->Rename.empty())
     {
-    if(this->InstallType != cmTarget::INSTALL_FILES &&
-       this->InstallType != cmTarget::INSTALL_PROGRAMS)
+    if(this->InstallType != cmInstallType_FILES &&
+       this->InstallType != cmInstallType_PROGRAMS)
       {
       this->FileCommand->SetError("INSTALL option RENAME may be used "
                                   "only with FILES or PROGRAMS.");
@@ -1846,22 +1899,12 @@ bool cmFileInstaller::CheckKeyword(std::string const& arg)
   else if(arg == "COMPONENTS" || arg == "CONFIGURATIONS" ||
           arg == "PROPERTIES")
     {
-    if(this->Makefile->IsOn("CMAKE_INSTALL_SELF_2_4"))
-      {
-      // When CMake 2.4 builds this CMake version we need to support
-      // the install scripts it generates since it asks this CMake
-      // to install itself using the rules it generated.
-      this->Doing = DoingSelf24;
-      }
-    else
-      {
-      cmOStringStream e;
-      e << "INSTALL called with old-style " << arg << " argument.  "
-        << "This script was generated with an older version of CMake.  "
-        << "Re-run this cmake version on your build tree.";
-      this->FileCommand->SetError(e.str().c_str());
-      this->Doing = DoingError;
-      }
+    cmOStringStream e;
+    e << "INSTALL called with old-style " << arg << " argument.  "
+      << "This script was generated with an older version of CMake.  "
+      << "Re-run this cmake version on your build tree.";
+    this->FileCommand->SetError(e.str().c_str());
+    this->Doing = DoingError;
     }
   else
     {
@@ -1884,12 +1927,6 @@ bool cmFileInstaller::CheckValue(std::string const& arg)
     case DoingRename:
       this->Rename = arg;
       break;
-    case DoingSelf24:
-      // Ignore these arguments for compatibility.  This should be
-      // reached only when CMake 2.4 is installing the current
-      // CMake.  It can be removed when CMake 2.6 or higher is
-      // required to build CMake.
-      break;
     default:
       return this->cmFileCopier::CheckValue(arg);
     }
@@ -1902,31 +1939,31 @@ bool cmFileInstaller
 {
   if ( stype == "EXECUTABLE" )
     {
-    this->InstallType = cmTarget::EXECUTABLE;
+    this->InstallType = cmInstallType_EXECUTABLE;
     }
   else if ( stype == "FILE" )
     {
-    this->InstallType = cmTarget::INSTALL_FILES;
+    this->InstallType = cmInstallType_FILES;
     }
   else if ( stype == "PROGRAM" )
     {
-    this->InstallType = cmTarget::INSTALL_PROGRAMS;
+    this->InstallType = cmInstallType_PROGRAMS;
     }
   else if ( stype == "STATIC_LIBRARY" )
     {
-    this->InstallType = cmTarget::STATIC_LIBRARY;
+    this->InstallType = cmInstallType_STATIC_LIBRARY;
     }
   else if ( stype == "SHARED_LIBRARY" )
     {
-    this->InstallType = cmTarget::SHARED_LIBRARY;
+    this->InstallType = cmInstallType_SHARED_LIBRARY;
     }
   else if ( stype == "MODULE" )
     {
-    this->InstallType = cmTarget::MODULE_LIBRARY;
+    this->InstallType = cmInstallType_MODULE_LIBRARY;
     }
   else if ( stype == "DIRECTORY" )
     {
-    this->InstallType = cmTarget::INSTALL_DIRECTORY;
+    this->InstallType = cmInstallType_DIRECTORY;
     }
   else
     {
@@ -2432,53 +2469,66 @@ bool cmFileCommand::HandleCMakePathCommand(std::vector<std::string>
   this->Makefile->AddDefinition(var, value.c_str());
   return true;
 }
+
+
 #if defined(CMAKE_BUILD_WITH_CMAKE)
 
-// Stuff for curl download
+// Stuff for curl download/upload
 typedef std::vector<char> cmFileCommandVectorOfChar;
-namespace{
+
+namespace {
+
   size_t
-  cmFileCommandWriteMemoryCallback(void *ptr, size_t size, size_t nmemb,
-                                          void *data)
-  { 
+  cmWriteToFileCallback(void *ptr, size_t size, size_t nmemb,
+                        void *data)
+    {
     register int realsize = (int)(size * nmemb);
     std::ofstream* fout = static_cast<std::ofstream*>(data);
     const char* chPtr = static_cast<char*>(ptr);
     fout->write(chPtr, realsize);
     return realsize;
-  }
+    }
+
+
+  size_t
+  cmWriteToMemoryCallback(void *ptr, size_t size, size_t nmemb,
+                          void *data)
+    {
+    register int realsize = (int)(size * nmemb);
+    cmFileCommandVectorOfChar *vec
+      = static_cast<cmFileCommandVectorOfChar*>(data);
+    const char* chPtr = static_cast<char*>(ptr);
+    vec->insert(vec->end(), chPtr, chPtr + realsize);
+    return realsize;
+    }
 
 
   static size_t
   cmFileCommandCurlDebugCallback(CURL *, curl_infotype, char *chPtr,
-                                        size_t size, void *data)
-  {
+                                 size_t size, void *data)
+    {
     cmFileCommandVectorOfChar *vec
       = static_cast<cmFileCommandVectorOfChar*>(data);
     vec->insert(vec->end(), chPtr, chPtr + size);
-
     return size;
-  }
+    }
 
 
   class cURLProgressHelper
   {
   public:
-    cURLProgressHelper(cmFileCommand *fc)
+    cURLProgressHelper(cmFileCommand *fc, const char *text)
       {
       this->CurrentPercentage = -1;
       this->FileCommand = fc;
+      this->Text = text;
       }
 
     bool UpdatePercentage(double value, double total, std::string &status)
       {
       int OldPercentage = this->CurrentPercentage;
 
-      if (0.0 == total)
-        {
-        this->CurrentPercentage = 100;
-        }
-      else
+      if (total > 0.0)
         {
         this->CurrentPercentage = static_cast<int>(value/total*100.0 + 0.5);
         }
@@ -2488,7 +2538,8 @@ namespace{
       if (updated)
         {
         cmOStringStream oss;
-        oss << "[download " << this->CurrentPercentage << "% complete]";
+        oss << "[" << this->Text << " " << this->CurrentPercentage
+            << "% complete]";
         status = oss.str();
         }
 
@@ -2503,14 +2554,15 @@ namespace{
   private:
     int CurrentPercentage;
     cmFileCommand *FileCommand;
+    std::string Text;
   };
 
 
   static int
-  cmFileCommandCurlProgressCallback(void *clientp,
-                                    double dltotal, double dlnow,
-                                    double ultotal, double ulnow)
-  {
+  cmFileDownloadProgressCallback(void *clientp,
+                                 double dltotal, double dlnow,
+                                 double ultotal, double ulnow)
+    {
     cURLProgressHelper *helper =
       reinterpret_cast<cURLProgressHelper *>(clientp);
 
@@ -2526,12 +2578,33 @@ namespace{
       }
 
     return 0;
-  }
+    }
+
+
+  static int
+  cmFileUploadProgressCallback(void *clientp,
+                               double dltotal, double dlnow,
+                               double ultotal, double ulnow)
+    {
+    cURLProgressHelper *helper =
+    reinterpret_cast<cURLProgressHelper *>(clientp);
+
+    static_cast<void>(dltotal);
+    static_cast<void>(dlnow);
+
+    std::string status;
+    if (helper->UpdatePercentage(ulnow, ultotal, status))
+      {
+      cmFileCommand *fc = helper->GetFileCommand();
+      cmMakefile *mf = fc->GetMakefile();
+      mf->DisplayStatus(status.c_str(), -1);
+      }
+
+    return 0;
+    }
 }
 
-#endif
 
-#if defined(CMAKE_BUILD_WITH_CMAKE)
 namespace {
 
   class cURLEasyGuard
@@ -2563,16 +2636,24 @@ namespace {
 #endif
 
 
+#define check_curl_result(result, errstr) \
+  if (result != CURLE_OK)                 \
+    {                                     \
+    std::string e(errstr);                \
+    e += ::curl_easy_strerror(result);    \
+    this->SetError(e.c_str());            \
+    return false;                         \
+    }
+
+
 bool
-cmFileCommand::HandleDownloadCommand(std::vector<std::string>
-                                     const& args)
+cmFileCommand::HandleDownloadCommand(std::vector<std::string> const& args)
 {
 #if defined(CMAKE_BUILD_WITH_CMAKE)
   std::vector<std::string>::const_iterator i = args.begin();
   if(args.size() < 3)
     {
-    this->SetError("FILE(DOWNLOAD url file) must be called with "
-                   "at least three arguments.");
+    this->SetError("DOWNLOAD must be called with at least three arguments.");
     return false;
     }
   ++i; // Get rid of subcommand
@@ -2582,6 +2663,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
   ++i;
 
   long timeout = 0;
+  long inactivity_timeout = 0;
   std::string verboseLog;
   std::string statusVar;
   std::string expectedMD5sum;
@@ -2598,8 +2680,20 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
         }
       else
         {
-        this->SetError("FILE(DOWNLOAD url file TIMEOUT time) missing "
-                       "time for TIMEOUT.");
+        this->SetError("DOWNLOAD missing time for TIMEOUT.");
+        return false;
+        }
+      }
+    else if(*i == "INACTIVITY_TIMEOUT")
+      {
+      ++i;
+      if(i != args.end())
+        {
+        inactivity_timeout = atol(i->c_str());
+        }
+      else
+        {
+        this->SetError("DOWNLOAD missing time for INACTIVITY_TIMEOUT.");
         return false;
         }
       }
@@ -2608,8 +2702,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
       ++i;
       if( i == args.end())
         {
-        this->SetError("FILE(DOWNLOAD url file LOG VAR) missing "
-                       "VAR for LOG.");
+        this->SetError("DOWNLOAD missing VAR for LOG.");
         return false;
         }
       verboseLog = *i;
@@ -2619,8 +2712,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
       ++i;
       if( i == args.end())
         {
-        this->SetError("FILE(DOWNLOAD url file STATUS VAR) missing "
-                       "VAR for STATUS.");
+        this->SetError("DOWNLOAD missing VAR for STATUS.");
         return false;
         }
       statusVar = *i;
@@ -2630,8 +2722,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
       ++i;
       if( i == args.end())
         {
-        this->SetError("FILE(DOWNLOAD url file EXPECTED_MD5 sum) missing "
-                       "sum value for EXPECTED_MD5.");
+        this->SetError("DOWNLOAD missing sum value for EXPECTED_MD5.");
         return false;
         }
       expectedMD5sum = cmSystemTools::LowerCase(*i);
@@ -2654,8 +2745,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
 
     if (!cmSystemTools::ComputeFileMD5(file.c_str(), computedMD5))
       {
-      this->SetError("FILE(DOWNLOAD ) error; cannot compute MD5 sum on "
-        "pre-existing file");
+      this->SetError("DOWNLOAD cannot compute MD5 sum on pre-existing file");
       return false;
       }
 
@@ -2664,10 +2754,6 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
 
     if (expectedMD5sum == actualMD5sum)
       {
-      this->Makefile->DisplayStatus(
-        "FILE(DOWNLOAD ) returning early: file already exists with "
-        "expected MD5 sum", -1);
-
       if(statusVar.size())
         {
         cmOStringStream result;
@@ -2698,8 +2784,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
   std::ofstream fout(file.c_str(), std::ios::binary);
   if(!fout)
     {
-    this->SetError("FILE(DOWNLOAD url file TIMEOUT time) can not open "
-                       "file for write.");
+    this->SetError("DOWNLOAD cannot open file for write.");
     return false;
     }
 
@@ -2708,98 +2793,55 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
   curl = ::curl_easy_init();
   if(!curl)
     {
-    this->SetError("FILE(DOWNLOAD ) error "
-                   "initializing curl.");
+    this->SetError("DOWNLOAD error initializing curl.");
     return false;
     }
 
   cURLEasyGuard g_curl(curl);
 
   ::CURLcode res = ::curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  if (res != CURLE_OK)
-    {
-    std::string errstring = "FILE(DOWNLOAD ) error; cannot set url: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+  check_curl_result(res, "DOWNLOAD cannot set url: ");
+
+  // enable HTTP ERROR parsing
+  res = ::curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
+  check_curl_result(res, "DOWNLOAD cannot set http failure option: ");
 
   res = ::curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
-                           cmFileCommandWriteMemoryCallback);
-  if (res != CURLE_OK)
-    {
-    std::string errstring =
-      "FILE(DOWNLOAD ) error; cannot set write function: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+                           cmWriteToFileCallback);
+  check_curl_result(res, "DOWNLOAD cannot set write function: ");
 
   res = ::curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION,
                            cmFileCommandCurlDebugCallback);
-  if (res != CURLE_OK)
-    {
-    std::string errstring =
-      "FILE(DOWNLOAD ) error; cannot set debug function: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+  check_curl_result(res, "DOWNLOAD cannot set debug function: ");
 
   cmFileCommandVectorOfChar chunkDebug;
 
   res = ::curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&fout);
-
-  if (res != CURLE_OK)
-    {
-    std::string errstring = "FILE(DOWNLOAD ) error; cannot set write data: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+  check_curl_result(res, "DOWNLOAD cannot set write data: ");
 
   res = ::curl_easy_setopt(curl, CURLOPT_DEBUGDATA, (void *)&chunkDebug);
-  if (res != CURLE_OK)
-    {
-    std::string errstring = "FILE(DOWNLOAD ) error; cannot set debug data: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+  check_curl_result(res, "DOWNLOAD cannot set debug data: ");
 
   res = ::curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-  if (res != CURLE_OK)
-    {
-    std::string errstring = "FILE(DOWNLOAD ) error; cannot set follow-redirect option: ";
-    errstring += ::curl_easy_strerror(res);
-    this->SetError(errstring.c_str());
-    return false;
-    }
+  check_curl_result(res, "DOWNLOAD cannot set follow-redirect option: ");
 
   if(verboseLog.size())
     {
     res = ::curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-
-    if (res != CURLE_OK)
-      {
-      std::string errstring = "FILE(DOWNLOAD ) error; cannot set verbose: ";
-      errstring += ::curl_easy_strerror(res);
-      this->SetError(errstring.c_str());
-      return false;
-      }
+    check_curl_result(res, "DOWNLOAD cannot set verbose: ");
     }
 
   if(timeout > 0)
     {
     res = ::curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout );
+    check_curl_result(res, "DOWNLOAD cannot set timeout: ");
+    }
 
-    if (res != CURLE_OK)
-      {
-      std::string errstring = "FILE(DOWNLOAD ) error; cannot set timeout: ";
-      errstring += ::curl_easy_strerror(res);
-      this->SetError(errstring.c_str());
-      return false;
-      }
+  if(inactivity_timeout > 0)
+    {
+    // Give up if there is no progress for a long time.
+    ::curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1);
+    ::curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, inactivity_timeout);
     }
 
   // Need the progress helper's scope to last through the duration of
@@ -2807,39 +2849,20 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
   // scope intentionally, rather than inside the "if(showProgress)"
   // block...
   //
-  cURLProgressHelper helper(this);
+  cURLProgressHelper helper(this, "download");
 
   if(showProgress)
     {
-    res = ::curl_easy_setopt(curl,
-      CURLOPT_NOPROGRESS, 0);
-    if (res != CURLE_OK)
-      {
-      std::string errstring = "FILE(DOWNLOAD ) error; cannot set noprogress value: ";
-      errstring += ::curl_easy_strerror(res);
-      this->SetError(errstring.c_str());
-      return false;
-      }
+    res = ::curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0);
+    check_curl_result(res, "DOWNLOAD cannot set noprogress value: ");
 
     res = ::curl_easy_setopt(curl,
-      CURLOPT_PROGRESSFUNCTION, cmFileCommandCurlProgressCallback);
-    if (res != CURLE_OK)
-      {
-      std::string errstring = "FILE(DOWNLOAD ) error; cannot set progress function: ";
-      errstring += ::curl_easy_strerror(res);
-      this->SetError(errstring.c_str());
-      return false;
-      }
+      CURLOPT_PROGRESSFUNCTION, cmFileDownloadProgressCallback);
+    check_curl_result(res, "DOWNLOAD cannot set progress function: ");
 
     res = ::curl_easy_setopt(curl,
       CURLOPT_PROGRESSDATA, reinterpret_cast<void*>(&helper));
-    if (res != CURLE_OK)
-      {
-      std::string errstring = "FILE(DOWNLOAD ) error; cannot set progress data: ";
-      errstring += ::curl_easy_strerror(res);
-      this->SetError(errstring.c_str());
-      return false;
-      }
+    check_curl_result(res, "DOWNLOAD cannot set progress data: ");
     }
 
   res = ::curl_easy_perform(curl);
@@ -2871,8 +2894,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
 
     if (!cmSystemTools::ComputeFileMD5(file.c_str(), computedMD5))
       {
-      this->SetError("FILE(DOWNLOAD ) error; cannot compute MD5 sum on "
-        "downloaded file");
+      this->SetError("DOWNLOAD cannot compute MD5 sum on downloaded file");
       return false;
       }
 
@@ -2882,8 +2904,7 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
     if (expectedMD5sum != actualMD5sum)
       {
       cmOStringStream oss;
-      oss << "FILE(DOWNLOAD ) error; expected and actual MD5 sums differ"
-        << std::endl
+      oss << "DOWNLOAD MD5 mismatch" << std::endl
         << "  for file: [" << file << "]" << std::endl
         << "    expected MD5 sum: [" << expectedMD5sum << "]" << std::endl
         << "      actual MD5 sum: [" << actualMD5sum << "]" << std::endl
@@ -2913,8 +2934,247 @@ cmFileCommand::HandleDownloadCommand(std::vector<std::string>
 
   return true;
 #else
-  this->SetError("FILE(DOWNLOAD ) "
-                 "not supported in bootstrap cmake ");
+  this->SetError("DOWNLOAD not supported by bootstrap cmake.");
+  return false;
+#endif
+}
+
+
+bool
+cmFileCommand::HandleUploadCommand(std::vector<std::string> const& args)
+{
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+  if(args.size() < 3)
+    {
+    this->SetError("UPLOAD must be called with at least three arguments.");
+    return false;
+    }
+  std::vector<std::string>::const_iterator i = args.begin();
+  ++i;
+  std::string filename = *i;
+  ++i;
+  std::string url = *i;
+  ++i;
+
+  long timeout = 0;
+  long inactivity_timeout = 0;
+  std::string logVar;
+  std::string statusVar;
+  bool showProgress = false;
+
+  while(i != args.end())
+    {
+    if(*i == "TIMEOUT")
+      {
+      ++i;
+      if(i != args.end())
+        {
+        timeout = atol(i->c_str());
+        }
+      else
+        {
+        this->SetError("UPLOAD missing time for TIMEOUT.");
+        return false;
+        }
+      }
+    else if(*i == "INACTIVITY_TIMEOUT")
+      {
+      ++i;
+      if(i != args.end())
+        {
+        inactivity_timeout = atol(i->c_str());
+        }
+      else
+        {
+        this->SetError("UPLOAD missing time for INACTIVITY_TIMEOUT.");
+        return false;
+        }
+      }
+    else if(*i == "LOG")
+      {
+      ++i;
+      if( i == args.end())
+        {
+        this->SetError("UPLOAD missing VAR for LOG.");
+        return false;
+        }
+      logVar = *i;
+      }
+    else if(*i == "STATUS")
+      {
+      ++i;
+      if( i == args.end())
+        {
+        this->SetError("UPLOAD missing VAR for STATUS.");
+        return false;
+        }
+      statusVar = *i;
+      }
+    else if(*i == "SHOW_PROGRESS")
+      {
+      showProgress = true;
+      }
+
+    ++i;
+    }
+
+  // Open file for reading:
+  //
+  FILE *fin = fopen(filename.c_str(), "rb");
+  if(!fin)
+    {
+    std::string errStr = "UPLOAD cannot open file '";
+    errStr += filename + "' for reading.";
+    this->SetError(errStr.c_str());
+    return false;
+    }
+
+  struct stat st;
+  if(::stat(filename.c_str(), &st))
+    {
+    std::string errStr = "UPLOAD cannot stat file '";
+    errStr += filename + "'.";
+    this->SetError(errStr.c_str());
+    fclose(fin);
+    return false;
+    }
+
+  ::CURL *curl;
+  ::curl_global_init(CURL_GLOBAL_DEFAULT);
+  curl = ::curl_easy_init();
+  if(!curl)
+    {
+    this->SetError("UPLOAD error initializing curl.");
+    fclose(fin);
+    return false;
+    }
+
+  cURLEasyGuard g_curl(curl);
+
+  // enable HTTP ERROR parsing
+  ::CURLcode res = ::curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
+
+  // enable uploading
+  res = ::curl_easy_setopt(curl, CURLOPT_UPLOAD, 1);
+  check_curl_result(res, "UPLOAD cannot set upload flag: ");
+
+  res = ::curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  check_curl_result(res, "UPLOAD cannot set url: ");
+
+  res = ::curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                           cmWriteToMemoryCallback);
+  check_curl_result(res, "UPLOAD cannot set write function: ");
+
+  res = ::curl_easy_setopt(curl, CURLOPT_DEBUGFUNCTION,
+                           cmFileCommandCurlDebugCallback);
+  check_curl_result(res, "UPLOAD cannot set debug function: ");
+
+  cmFileCommandVectorOfChar chunkResponse;
+  cmFileCommandVectorOfChar chunkDebug;
+
+  res = ::curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunkResponse);
+  check_curl_result(res, "UPLOAD cannot set write data: ");
+
+  res = ::curl_easy_setopt(curl, CURLOPT_DEBUGDATA, (void *)&chunkDebug);
+  check_curl_result(res, "UPLOAD cannot set debug data: ");
+
+  res = ::curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  check_curl_result(res, "UPLOAD cannot set follow-redirect option: ");
+
+  if(logVar.size())
+    {
+    res = ::curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+    check_curl_result(res, "UPLOAD cannot set verbose: ");
+    }
+
+  if(timeout > 0)
+    {
+    res = ::curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout );
+    check_curl_result(res, "UPLOAD cannot set timeout: ");
+    }
+
+  if(inactivity_timeout > 0)
+    {
+    // Give up if there is no progress for a long time.
+    ::curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1);
+    ::curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, inactivity_timeout);
+    }
+
+  // Need the progress helper's scope to last through the duration of
+  // the curl_easy_perform call... so this object is declared at function
+  // scope intentionally, rather than inside the "if(showProgress)"
+  // block...
+  //
+  cURLProgressHelper helper(this, "upload");
+
+  if(showProgress)
+    {
+    res = ::curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0);
+    check_curl_result(res, "UPLOAD cannot set noprogress value: ");
+
+    res = ::curl_easy_setopt(curl,
+      CURLOPT_PROGRESSFUNCTION, cmFileUploadProgressCallback);
+    check_curl_result(res, "UPLOAD cannot set progress function: ");
+
+    res = ::curl_easy_setopt(curl,
+      CURLOPT_PROGRESSDATA, reinterpret_cast<void*>(&helper));
+    check_curl_result(res, "UPLOAD cannot set progress data: ");
+    }
+
+  // now specify which file to upload
+  res = ::curl_easy_setopt(curl, CURLOPT_INFILE, fin);
+  check_curl_result(res, "UPLOAD cannot set input file: ");
+
+  // and give the size of the upload (optional)
+  res = ::curl_easy_setopt(curl,
+    CURLOPT_INFILESIZE, static_cast<long>(st.st_size));
+  check_curl_result(res, "UPLOAD cannot set input file size: ");
+
+  res = ::curl_easy_perform(curl);
+
+  /* always cleanup */
+  g_curl.release();
+  ::curl_easy_cleanup(curl);
+
+  if(statusVar.size())
+    {
+    cmOStringStream result;
+    result << (int)res << ";\"" << ::curl_easy_strerror(res) << "\"";
+    this->Makefile->AddDefinition(statusVar.c_str(),
+                                  result.str().c_str());
+    }
+
+  ::curl_global_cleanup();
+
+  fclose(fin);
+  fin = NULL;
+
+  if(logVar.size())
+    {
+    std::string log;
+
+    if(chunkResponse.size())
+      {
+      chunkResponse.push_back(0);
+      log += "Response:\n";
+      log += &*chunkResponse.begin();
+      log += "\n";
+      }
+
+    if(chunkDebug.size())
+      {
+      chunkDebug.push_back(0);
+      log += "Debug:\n";
+      log += &*chunkDebug.begin();
+      log += "\n";
+      }
+
+    this->Makefile->AddDefinition(logVar.c_str(), log.c_str());
+    }
+
+  return true;
+#else
+  this->SetError("UPLOAD not supported by bootstrap cmake.");
   return false;
 #endif
 }

@@ -22,8 +22,19 @@ elseif("${CMAKE_Fortran_COMPILER_ID}" STREQUAL "GNU")
   endif()
 endif()
 
+# Pick a module .def file with the properly mangled symbol name.
+set(world_def "")
+if(WIN32 AND NOT CYGWIN)
+  if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+    set(world_def world_gnu.def)
+  elseif("${CMAKE_Fortran_COMPILER_ID}" MATCHES "Intel" OR
+      "${CMAKE_GENERATOR}" MATCHES "Visual Studio") # Intel plugin
+    set(world_def world_icl.def)
+  endif()
+endif()
+
 add_library(hello STATIC hello.f)
-add_library(world ${_SHARED} world.f world.def)
+add_library(world ${_SHARED} world.f ${world_def})
 add_executable(testf testf.f)
 target_link_libraries(testf hello world)
 
@@ -34,7 +45,7 @@ function(test_fortran_c_interface_module)
   FortranCInterface_VERIFY()
   FortranCInterface_VERIFY(CXX)
   if(CMAKE_Fortran_COMPILER_SUPPORTS_F90)
-    if(NOT CMAKE_Fortran_COMPILER_ID MATCHES "SunPro|MIPSpro|PathScale")
+    if(NOT CMAKE_Fortran_COMPILER_ID MATCHES "SunPro|MIPSpro|PathScale|Absoft")
       set(module_expected 1)
     endif()
     if(FortranCInterface_MODULE_FOUND OR module_expected)
@@ -102,13 +113,8 @@ endfunction()
 
 # if the id's match or the compilers are compatible, then
 # call the test_fortran_c_interface_module function
-if(("${CMAKE_Fortran_COMPILER_ID}" MATCHES "Intel")
-    AND 
-    ("${CMAKE_C_COMPILER_ID}" MATCHES "MSVC")
-    )
-  set(COMPATABLE_COMPILERS TRUE)
-endif()
-if(COMPATABLE_COMPILERS
+if("${CMAKE_Fortran_COMPILER_ID}:${CMAKE_C_COMPILER_ID}" MATCHES
+    "(Intel:MSVC|Absoft:GNU)"
     OR ("${CMAKE_Fortran_COMPILER_ID}" MATCHES "${CMAKE_C_COMPILER_ID}" ))
   test_fortran_c_interface_module()
 else()
@@ -147,8 +153,10 @@ if(CMAKE_Fortran_COMPILER_SUPPORTS_F90)
 
   add_executable(test_use_in_comment_fixedform
     test_use_in_comment_fixedform.f)
+  set_property(SOURCE test_use_in_comment_fixedform.f PROPERTY Fortran_FORMAT FIXED)
   add_executable(test_use_in_comment_freeform 
     test_use_in_comment_freeform.f90)
+  set_property(SOURCE test_use_in_comment_freeform.f90 PROPERTY Fortran_FORMAT FREE)
 
   add_executable(test_in_interface 
     in_interface/main.f90

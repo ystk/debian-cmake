@@ -200,6 +200,7 @@ QCMakeCacheModel::QCMakeCacheModel(QObject* p)
     NewPropertyCount(0),
     View(FlatView)
 {
+  this->ShowNewProperties = true;
   QStringList labels;
   labels << tr("Name") << tr("Value");
   this->setHorizontalHeaderLabels(labels);
@@ -214,6 +215,11 @@ static uint qHash(const QCMakeProperty& p)
   return qHash(p.Key);
 }
 
+void QCMakeCacheModel::setShowNewProperties(bool f)
+{
+  this->ShowNewProperties = f;
+}
+
 void QCMakeCacheModel::clear()
 {
   this->QStandardItemModel::clear();
@@ -226,13 +232,21 @@ void QCMakeCacheModel::clear()
 
 void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
 {
-  QSet<QCMakeProperty> newProps = props.toSet();
-  QSet<QCMakeProperty> newProps2 = newProps;
-  QSet<QCMakeProperty> oldProps = this->properties().toSet();
-  
-  oldProps.intersect(newProps);
-  newProps.subtract(oldProps);
-  newProps2.subtract(newProps);
+  QSet<QCMakeProperty> newProps, newProps2;
+
+  if(this->ShowNewProperties)
+    {
+    newProps = props.toSet();
+    newProps2 = newProps;
+    QSet<QCMakeProperty> oldProps = this->properties().toSet();
+    oldProps.intersect(newProps);
+    newProps.subtract(oldProps);
+    newProps2.subtract(newProps);
+    }
+  else
+    {
+    newProps2 = props.toSet();
+    }
 
   bool b = this->blockSignals(true);
 
@@ -279,6 +293,8 @@ void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
       parentItems.append(new QStandardItem());
       parentItems[0]->setData(QBrush(QColor(255,100,100)), Qt::BackgroundColorRole);
       parentItems[1]->setData(QBrush(QColor(255,100,100)), Qt::BackgroundColorRole);
+      parentItems[0]->setData(1, GroupRole);
+      parentItems[1]->setData(1, GroupRole);
       root->appendRow(parentItems);
 
       int num = props2.size();
@@ -300,6 +316,7 @@ void QCMakeCacheModel::setProperties(const QCMakePropertyList& props)
       QStandardItem* parentItem = 
         new QStandardItem(key.isEmpty() ? tr("Ungrouped Entries") : key);
       root->appendRow(parentItem);
+      parentItem->setData(1, GroupRole);
 
       int num = props2.size();
       for(int i=0; i<num; i++)
@@ -464,10 +481,13 @@ QCMakePropertyList QCMakeCacheModel::properties() const
     }
     else
     {
-      // get data
-      QCMakeProperty prop;
-      this->getPropertyData(idx, prop);
-      props.append(prop);
+      if(!data(idx, GroupRole).toInt())
+      {
+        // get data
+        QCMakeProperty prop;
+        this->getPropertyData(idx, prop);
+        props.append(prop);
+      }
       
       // go to the next in the tree
       while(!idxs.isEmpty() && !idxs.last().sibling(idxs.last().row()+1, 0).isValid())

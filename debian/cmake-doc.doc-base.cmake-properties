@@ -3,8 +3,8 @@ Title: Reference of CMake properties.
 Section: Programming
 
 Format: HTML
-Index: /usr/share/doc/cmake-docs/cmake-properties.html
-Files: /usr/share/doc/cmake-docs/cmake-properties.html
+Index: /usr/share/doc/cmake-data/cmake-properties.html
+Files: /usr/share/doc/cmake-data/cmake-properties.html
 
 Format: Text
-Files: /usr/share/doc/cmake-docs/cmake-properties.txt.gz
+Files: /usr/share/doc/cmake-data/cmake-properties.txt.gz

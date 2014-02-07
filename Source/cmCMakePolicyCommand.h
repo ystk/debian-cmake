@@ -41,17 +41,17 @@ public:
  /**
    * This determines if the command is invoked when in script mode.
    */
-  virtual bool IsScriptable() { return true; }
+  virtual bool IsScriptable() const { return true; }
 
  /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() {return "cmake_policy";}
+  virtual const char* GetName() const {return "cmake_policy";}
   
  /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "Manage CMake Policy settings.";
     }
@@ -59,7 +59,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "As CMake evolves it is sometimes necessary to change existing "
@@ -85,7 +85,8 @@ public:
       "given version of CMake.  "
       "All policies introduced in the specified version or earlier "
       "will be set to use NEW behavior.  "
-      "All policies introduced after the specified version will be unset.  "
+      "All policies introduced after the specified version will be unset "
+      "(unless variable CMAKE_POLICY_DEFAULT_CMP<NNNN> sets a default).  "
       "This effectively requests behavior preferred as of a given CMake "
       "version and tells newer CMake versions to warn about their new "
       "policies.  "

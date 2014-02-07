@@ -58,7 +58,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # ------------------------------------------------------------------
@@ -139,7 +139,7 @@ IF(WIN32_STYLE_FIND)
   ## find libs for combination of static/shared with release/debug
   ## be careful if you add something here,
   ## avoid mixing of headers and libs of different wx versions,
-  ## there may be multiple WX version s installed.
+  ## there may be multiple WX versions installed.
   SET (WXWINDOWS_POSSIBLE_LIB_PATHS
     "${WXWINDOWS_ROOT_DIR}/lib"
     )

@@ -17,7 +17,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 IF(CYGWIN)
@@ -82,9 +82,19 @@ FIND_PROGRAM(TCL_TCLSH
   HINTS ${TCLTK_POSSIBLE_BIN_PATHS}
   )
 
+IF(TCL_TCLSH)
+   EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -E echo puts "\$tcl_version"
+                   COMMAND "${TCL_TCLSH}"
+                   OUTPUT_VARIABLE TCLSH_VERSION_STRING
+                   ERROR_QUIET
+                   OUTPUT_STRIP_TRAILING_WHITESPACE)
+ENDIF(TCL_TCLSH)
+
 # handle the QUIETLY and REQUIRED arguments and set TIFF_FOUND to TRUE if 
 # all listed variables are TRUE
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(Tclsh DEFAULT_MSG TCL_TCLSH)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(Tclsh
+                                  REQUIRED_VARS TCL_TCLSH
+                                  VERSION_VAR TCLSH_VERSION_STRING)
 
 MARK_AS_ADVANCED(TCL_TCLSH)

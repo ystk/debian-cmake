@@ -39,7 +39,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 IF(NOT FLTK_SKIP_OPENGL)
@@ -67,11 +67,6 @@ IF(APPLE)
   SET( FLTK_PLATFORM_DEPENDENT_LIBS  "-framework Carbon -framework Cocoa -framework ApplicationServices -lz")
 ENDIF(APPLE)
 
-IF(CYGWIN)
-  FIND_LIBRARY(FLTK_MATH_LIBRARY m)
-  SET( FLTK_PLATFORM_DEPENDENT_LIBS ole32 uuid comctl32 wsock32 supc++ ${FLTK_MATH_LIBRARY} -lgdi32)
-ENDIF(CYGWIN)
-
 # If FLTK_INCLUDE_DIR is already defined we assigne its value to FLTK_DIR
 IF(FLTK_INCLUDE_DIR)
   SET(FLTK_DIR ${FLTK_INCLUDE_DIR})
@@ -84,18 +79,14 @@ SET(FLTK_DIR_STRING "directory containing FLTKConfig.cmake.  This is either the 
 # Search only if the location is not already known.
 IF(NOT FLTK_DIR)
   # Get the system search path as a list.
-  IF(UNIX)
-    STRING(REGEX MATCHALL "[^:]+" FLTK_DIR_SEARCH1 "$ENV{PATH}")
-  ELSE(UNIX)
-    STRING(REGEX REPLACE "\\\\" "/" FLTK_DIR_SEARCH1 "$ENV{PATH}")
-  ENDIF(UNIX)
-  STRING(REGEX REPLACE "/;" ";" FLTK_DIR_SEARCH2 ${FLTK_DIR_SEARCH1})
+  FILE(TO_CMAKE_PATH "$ENV{PATH}" FLTK_DIR_SEARCH2)
 
   # Construct a set of paths relative to the system search path.
   SET(FLTK_DIR_SEARCH "")
   FOREACH(dir ${FLTK_DIR_SEARCH2})
     SET(FLTK_DIR_SEARCH ${FLTK_DIR_SEARCH} "${dir}/../lib/fltk")
   ENDFOREACH(dir)
+  STRING(REPLACE "//" "/" FLTK_DIR_SEARCH "${FLTK_DIR_SEARCH}")
 
   #
   # Look for an installation or build tree.
@@ -110,8 +101,6 @@ IF(NOT FLTK_DIR)
     # Look in standard UNIX install locations.
     /usr/local/lib/fltk
     /usr/lib/fltk
-    /usr/local/include
-    /usr/include
     /usr/local/fltk
     /usr/X11R6/include
 
@@ -297,7 +286,7 @@ ENDIF(NOT FLTK_DIR)
   ENDIF()
   LIST(APPEND FLTK_LIBRARIES ${FLTK_BASE_LIBRARY})
 
-INCLUDE(FindPackageHandleStandardArgs)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 IF(FLTK_SKIP_FLUID)
   FIND_PACKAGE_HANDLE_STANDARD_ARGS(FLTK DEFAULT_MSG FLTK_LIBRARIES FLTK_INCLUDE_DIR)
 ELSE()

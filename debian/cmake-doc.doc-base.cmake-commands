@@ -3,8 +3,8 @@ Title: Command reference of CMake
 Section: Programming
 
 Format: HTML
-Index: /usr/share/doc/cmake-docs/cmake-commands.html
-Files: /usr/share/doc/cmake-docs/cmake-commands.html
+Index: /usr/share/doc/cmake-data/cmake-commands.html
+Files: /usr/share/doc/cmake-data/cmake-commands.html
 
 Format: Text
-Files: /usr/share/doc/cmake-docs/cmake-commands.txt.gz
+Files: /usr/share/doc/cmake-data/cmake-commands.txt.gz

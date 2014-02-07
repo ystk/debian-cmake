@@ -12,7 +12,7 @@
 #ifndef cmVisualStudioGeneratorOptions_h
 #define cmVisualStudioGeneratorOptions_h
 
-#include "cmLocalGenerator.h"
+#include "cmLocalVisualStudioGenerator.h"
 
 #include "cmIDEOptions.h"
 typedef cmIDEFlagTable cmVS7FlagTable;
@@ -30,8 +30,7 @@ public:
     Linker,
     FortranCompiler
   };
-  cmVisualStudioGeneratorOptions(cmLocalGenerator* lg,
-                                 int version,
+  cmVisualStudioGeneratorOptions(cmLocalVisualStudioGenerator* lg,
                                  Tool tool,
                                  cmVS7FlagTable const* table,
                                  cmVS7FlagTable const* extraTable = 0,
@@ -39,6 +38,7 @@ public:
 
   // Store options from command line flags.
   void Parse(const char* flags);
+  void ParseFinish();
 
   // Fix the ExceptionHandling option to default to off.
   void FixExceptionHandlingDefault();
@@ -48,24 +48,30 @@ public:
 
   // Check for specific options.
   bool UsingUnicode();
+  bool UsingSBCS();
 
   bool IsDebug();
   // Write options to output.
   void OutputPreprocessorDefinitions(std::ostream& fout,
                                      const char* prefix,
-                                     const char* suffix);
+                                     const char* suffix,
+                                     const char* lang);
   void OutputFlagMap(std::ostream& fout, const char* indent);
   void OutputAdditionalOptions(std::ostream& fout,
                                const char* prefix,
                                const char* suffix);
   void SetConfiguration(const char* config);
 private:
-  cmLocalGenerator* LocalGenerator;
-  int Version;
+  cmLocalVisualStudioGenerator* LocalGenerator;
+  cmLocalVisualStudioGenerator::VSVersion Version;
 
   std::string Configuration;
   Tool CurrentTool;
   cmVisualStudio10TargetGenerator* TargetGenerator;
+
+  bool FortranRuntimeDebug;
+  bool FortranRuntimeDLL;
+  bool FortranRuntimeMT;
 
   virtual void StoreUnknownFlag(const char* flag);
 };

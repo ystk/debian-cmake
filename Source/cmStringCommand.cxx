@@ -10,6 +10,8 @@
   See the License for more information.
 ============================================================================*/
 #include "cmStringCommand.h"
+#include "cmCryptoHash.h"
+
 #include <cmsys/RegularExpression.hxx>
 #include <cmsys/SystemTools.hxx>
 
@@ -35,6 +37,15 @@ bool cmStringCommand
   else if(subCommand == "REPLACE")
     {
     return this->HandleReplaceCommand(args);
+    }
+  else if ( subCommand == "MD5" ||
+            subCommand == "SHA1" ||
+            subCommand == "SHA224" ||
+            subCommand == "SHA256" ||
+            subCommand == "SHA384" ||
+            subCommand == "SHA512" )
+    {
+    return this->HandleHashCommand(args);
     }
   else if(subCommand == "TOLOWER")
     {
@@ -72,10 +83,42 @@ bool cmStringCommand
     {
     return this->HandleRandomCommand(args);
     }
-  
+  else if(subCommand == "FIND")
+    {
+    return this->HandleFindCommand(args);
+    }
+
   std::string e = "does not recognize sub-command "+subCommand;
   this->SetError(e.c_str());
   return false;
+}
+
+//----------------------------------------------------------------------------
+bool cmStringCommand::HandleHashCommand(std::vector<std::string> const& args)
+{
+#if defined(CMAKE_BUILD_WITH_CMAKE)
+  if(args.size() != 3)
+    {
+    cmOStringStream e;
+    e << args[0] << " requires an output variable and an input string";
+    this->SetError(e.str().c_str());
+    return false;
+    }
+
+  cmsys::auto_ptr<cmCryptoHash> hash(cmCryptoHash::New(args[0].c_str()));
+  if(hash.get())
+    {
+    std::string out = hash->HashString(args[2].c_str());
+    this->Makefile->AddDefinition(args[1].c_str(), out.c_str());
+    return true;
+    }
+  return false;
+#else
+  cmOStringStream e;
+  e << args[0] << " not available during bootstrap";
+  this->SetError(e.str().c_str());
+  return false;
+#endif
 }
 
 //----------------------------------------------------------------------------
@@ -482,6 +525,7 @@ void cmStringCommand::ClearMatches(cmMakefile* mf)
     char name[128];
     sprintf(name, "CMAKE_MATCH_%d", i);
     mf->AddDefinition(name, "");
+    mf->MarkVariableAsUsed(name);
     }
 }
 
@@ -493,7 +537,70 @@ void cmStringCommand::StoreMatches(cmMakefile* mf,cmsys::RegularExpression& re)
     char name[128];
     sprintf(name, "CMAKE_MATCH_%d", i);
     mf->AddDefinition(name, re.match(i).c_str());
+    mf->MarkVariableAsUsed(name);
     }
+}
+
+//----------------------------------------------------------------------------
+bool cmStringCommand::HandleFindCommand(std::vector<std::string> const&
+                                           args)
+{
+  // check if all required parameters were passed
+  if(args.size() < 4 || args.size() > 5)
+    {
+    this->SetError("sub-command FIND requires 3 or 4 parameters.");
+    return false;
+    }
+
+  // check if the reverse flag was set or not
+  bool reverseMode = false;
+  if(args.size() == 5 && args[4] == "REVERSE")
+    {
+    reverseMode = true;
+    }
+
+  // if we have 5 arguments the last one must be REVERSE
+  if(args.size() == 5 && args[4] != "REVERSE")
+    {
+    this->SetError("sub-command FIND: unknown last parameter");
+    return false;
+    }
+
+  // local parameter names.
+  const std::string& sstring = args[1];
+  const std::string& schar = args[2];
+  const std::string& outvar = args[3];
+
+  // ensure that the user cannot accidentally specify REVERSE as a variable
+  if(outvar == "REVERSE")
+    {
+    this->SetError("sub-command FIND does not allow to select REVERSE as "
+                   "the output variable.  "
+                   "Maybe you missed the actual output variable?");
+    return false;
+    }
+
+  // try to find the character and return its position
+  size_t pos;
+  if(!reverseMode)
+    {
+    pos = sstring.find(schar);
+    }
+  else
+    {
+    pos = sstring.rfind(schar);
+    }
+  if(std::string::npos != pos)
+    {
+    cmOStringStream s;
+    s << pos;
+    this->Makefile->AddDefinition(outvar.c_str(), s.str().c_str());
+    return true;
+    }
+
+  // the character was not found, but this is not really an error
+  this->Makefile->AddDefinition(outvar.c_str(), "-1");
+  return true;
 }
 
 //----------------------------------------------------------------------------
@@ -606,10 +713,10 @@ bool cmStringCommand::HandleSubstringCommand(std::vector<std::string> const&
     return false;
     }
   int leftOverLength = intStringLength - begin;
-  if ( end < 0 || end > leftOverLength )
+  if ( end < -1 || end > leftOverLength )
     {
     cmOStringStream ostr;
-    ostr << "end index: " << end << " is out of range " << 0 << " - "
+    ostr << "end index: " << end << " is out of range -1 - "
          << leftOverLength;
     this->SetError(ostr.str().c_str());
     return false;
@@ -702,7 +809,7 @@ bool cmStringCommand
 
   static bool seeded = false;
   bool force_seed = false;
-  int seed = (int) time(NULL);
+  unsigned int seed = 0;
   int length = 5;
   const char cmStringCommandDefaultAlphabet[] = "qwertyuiopasdfghjklzxcvbnm"
     "QWERTYUIOPASDFGHJKLZXCVBNM"
@@ -729,7 +836,7 @@ bool cmStringCommand
       else if ( args[i] == "RANDOM_SEED" )
         {
         ++i;
-        seed = atoi(args[i].c_str());
+        seed = static_cast<unsigned int>(atoi(args[i].c_str()));
         force_seed = true;
         }
       }
@@ -739,7 +846,7 @@ bool cmStringCommand
     alphabet = cmStringCommandDefaultAlphabet;
     }
 
-  double sizeofAlphabet = alphabet.size();
+  double sizeofAlphabet = static_cast<double>(alphabet.size());
   if ( sizeofAlphabet < 1 )
     {
     this->SetError("sub-command RANDOM invoked with bad alphabet.");
@@ -757,7 +864,7 @@ bool cmStringCommand
   if (!seeded || force_seed)
     {
     seeded = true;
-    srand(seed);
+    srand(force_seed? seed : cmSystemTools::RandomSeed());
     }
 
   const char* alphaPtr = alphabet.c_str();

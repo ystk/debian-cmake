@@ -1,7 +1,10 @@
 # - Find Ruby
 # This module finds if Ruby is installed and determines where the include files
-# and libraries are. Ruby 1.8 and 1.9 are supported. The minimum required version 
-# specified in the find_package() command is honored.
+# and libraries are. Ruby 1.8 and 1.9 are supported.
+#
+# The minimum required version of Ruby can be specified using the
+# standard syntax, e.g. FIND_PACKAGE(Ruby 1.8)
+#
 # It also determines what the name of the library is. This
 # code sets the following variables:
 #
@@ -24,7 +27,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 #   RUBY_ARCHDIR=`$RUBY -r rbconfig -e 'printf("%s",Config::CONFIG@<:@"archdir"@:>@)'`
@@ -57,50 +60,45 @@ ENDIF("${Ruby_FIND_VERSION_SHORT_NODOT}" VERSION_LESS "19")
 FIND_PROGRAM(RUBY_EXECUTABLE NAMES ${_RUBY_POSSIBLE_EXECUTABLE_NAMES})
 
 
-IF(RUBY_EXECUTABLE  AND NOT  RUBY_MAJOR_VERSION)
+IF(RUBY_EXECUTABLE  AND NOT  RUBY_VERSION_MAJOR)
+  FUNCTION(_RUBY_CONFIG_VAR RBVAR OUTVAR)
+    EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['${RBVAR}']"
+      RESULT_VARIABLE _RUBY_SUCCESS
+      OUTPUT_VARIABLE _RUBY_OUTPUT
+      ERROR_QUIET)
+    IF(_RUBY_SUCCESS OR NOT _RUBY_OUTPUT)
+      EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['${RBVAR}']"
+        RESULT_VARIABLE _RUBY_SUCCESS
+        OUTPUT_VARIABLE _RUBY_OUTPUT
+        ERROR_QUIET)
+    ENDIF(_RUBY_SUCCESS OR NOT _RUBY_OUTPUT)
+    SET(${OUTVAR} "${_RUBY_OUTPUT}" PARENT_SCOPE)
+  ENDFUNCTION(_RUBY_CONFIG_VAR)
+
+
   # query the ruby version
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['MAJOR']"
-      OUTPUT_VARIABLE RUBY_VERSION_MAJOR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['MINOR']"
-      OUTPUT_VARIABLE RUBY_VERSION_MINOR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['TEENY']"
-      OUTPUT_VARIABLE RUBY_VERSION_PATCH)
+   _RUBY_CONFIG_VAR("MAJOR" RUBY_VERSION_MAJOR)
+   _RUBY_CONFIG_VAR("MINOR" RUBY_VERSION_MINOR)
+   _RUBY_CONFIG_VAR("TEENY" RUBY_VERSION_PATCH)
 
    # query the different directories
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['archdir']"
-      OUTPUT_VARIABLE RUBY_ARCH_DIR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['arch']"
-      OUTPUT_VARIABLE RUBY_ARCH)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['rubyhdrdir']"
-      OUTPUT_VARIABLE RUBY_HDR_DIR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['libdir']"
-      OUTPUT_VARIABLE RUBY_POSSIBLE_LIB_DIR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['rubylibdir']"
-      OUTPUT_VARIABLE RUBY_RUBY_LIB_DIR)
+   _RUBY_CONFIG_VAR("archdir" RUBY_ARCH_DIR)
+   _RUBY_CONFIG_VAR("arch" RUBY_ARCH)
+   _RUBY_CONFIG_VAR("rubyhdrdir" RUBY_HDR_DIR)
+   _RUBY_CONFIG_VAR("libdir" RUBY_POSSIBLE_LIB_DIR)
+   _RUBY_CONFIG_VAR("rubylibdir" RUBY_RUBY_LIB_DIR)
 
    # site_ruby
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['sitearchdir']"
-      OUTPUT_VARIABLE RUBY_SITEARCH_DIR)
-
-   EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['sitelibdir']"
-      OUTPUT_VARIABLE RUBY_SITELIB_DIR)
+   _RUBY_CONFIG_VAR("sitearchdir" RUBY_SITEARCH_DIR)
+   _RUBY_CONFIG_VAR("sitelibdir" RUBY_SITELIB_DIR)
 
    # vendor_ruby available ?
    EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r vendor-specific -e "print 'true'"
       OUTPUT_VARIABLE RUBY_HAS_VENDOR_RUBY  ERROR_QUIET)
 
    IF(RUBY_HAS_VENDOR_RUBY)
-      EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['vendorlibdir']"
-         OUTPUT_VARIABLE RUBY_VENDORLIB_DIR)
-
-      EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['vendorarchdir']"
-         OUTPUT_VARIABLE RUBY_VENDORARCH_DIR)
+      _RUBY_CONFIG_VAR("vendorlibdir" RUBY_VENDORLIB_DIR)
+      _RUBY_CONFIG_VAR("vendorarchdir" RUBY_VENDORARCH_DIR)
    ENDIF(RUBY_HAS_VENDOR_RUBY)
 
    # save the results in the cache so we don't have to run ruby the next time again
@@ -132,11 +130,11 @@ IF(RUBY_EXECUTABLE  AND NOT  RUBY_MAJOR_VERSION)
      RUBY_VERSION_MINOR
      RUBY_VERSION_PATCH
      )
-ENDIF(RUBY_EXECUTABLE  AND NOT  RUBY_MAJOR_VERSION)
+ENDIF(RUBY_EXECUTABLE  AND NOT  RUBY_VERSION_MAJOR)
 
-# In case RUBY_EXECUTABLE could not be executed (e.g. cross compiling) 
+# In case RUBY_EXECUTABLE could not be executed (e.g. cross compiling)
 # try to detect which version we found. This is not too good.
-IF(NOT RUBY_VERSION_MAJOR)
+IF(RUBY_EXECUTABLE AND NOT RUBY_VERSION_MAJOR)
    # by default assume 1.8.0
    SET(RUBY_VERSION_MAJOR 1)
    SET(RUBY_VERSION_MINOR 8)
@@ -146,29 +144,14 @@ IF(NOT RUBY_VERSION_MAJOR)
       SET(RUBY_VERSION_MAJOR 1)
       SET(RUBY_VERSION_MINOR 9)
    ENDIF(${RUBY_EXECUTABLE} MATCHES "ruby1.?9"  OR  RUBY_HDR_DIR)
-ENDIF(NOT RUBY_VERSION_MAJOR)
+ENDIF(RUBY_EXECUTABLE AND NOT RUBY_VERSION_MAJOR)
 
-
-SET(RUBY_VERSION "${RUBY_VERSION_MAJOR}.${RUBY_VERSION_MINOR}.${RUBY_VERSION_PATCH}")
-SET(_RUBY_VERSION_SHORT "${RUBY_VERSION_MAJOR}.${RUBY_VERSION_MINOR}")
-SET(_RUBY_VERSION_SHORT_NODOT "${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR}")
-SET(_RUBY_NODOT_VERSION "${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR}${RUBY_VERSION_PATCH}")
-
-# Now we know which version we found
-IF(Ruby_FIND_VERSION)
-   IF(${RUBY_VERSION}  VERSION_LESS  ${Ruby_FIND_VERSION})
-      # force running ruby the next time again
-      SET(RUBY_VERSION_MAJOR    ""    CACHE PATH "The Ruby major version" FORCE)
-      IF(Ruby_FIND_REQUIRED)
-         MESSAGE(FATAL_ERROR "Ruby version ${Ruby_FIND_VERSION} required, but only version ${RUBY_VERSION} found.")
-      ELSE(Ruby_FIND_REQUIRED)
-         IF(NOT Ruby_FIND_QUIETLY)
-            MESSAGE(STATUS "Ruby version ${Ruby_FIND_VERSION} required, but only version ${RUBY_VERSION} found.")
-         ENDIF(NOT Ruby_FIND_QUIETLY)
-         RETURN()
-      ENDIF(Ruby_FIND_REQUIRED)
-   ENDIF(${RUBY_VERSION}  VERSION_LESS  ${Ruby_FIND_VERSION})
-ENDIF(Ruby_FIND_VERSION)
+IF(RUBY_VERSION_MAJOR)
+   SET(RUBY_VERSION "${RUBY_VERSION_MAJOR}.${RUBY_VERSION_MINOR}.${RUBY_VERSION_PATCH}")
+   SET(_RUBY_VERSION_SHORT "${RUBY_VERSION_MAJOR}.${RUBY_VERSION_MINOR}")
+   SET(_RUBY_VERSION_SHORT_NODOT "${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR}")
+   SET(_RUBY_NODOT_VERSION "${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR}${RUBY_VERSION_PATCH}")
+ENDIF(RUBY_VERSION_MAJOR)
 
 FIND_PATH(RUBY_INCLUDE_DIR
    NAMES ruby.h
@@ -180,20 +163,20 @@ FIND_PATH(RUBY_INCLUDE_DIR
 SET(RUBY_INCLUDE_DIRS ${RUBY_INCLUDE_DIR} )
 
 # if ruby > 1.8 is required or if ruby > 1.8 was found, search for the config.h dir
-IF( ${Ruby_FIND_VERSION_SHORT_NODOT} GREATER 18  OR  ${_RUBY_VERSION_SHORT_NODOT} GREATER 18  OR  RUBY_HDR_DIR)
+IF( "${Ruby_FIND_VERSION_SHORT_NODOT}" GREATER 18  OR  "${_RUBY_VERSION_SHORT_NODOT}" GREATER 18  OR  RUBY_HDR_DIR)
    FIND_PATH(RUBY_CONFIG_INCLUDE_DIR
      NAMES ruby/config.h  config.h
-     HINTS 
+     HINTS
      ${RUBY_HDR_DIR}/${RUBY_ARCH}
-     ${RUBY_ARCH_DIR} 
+     ${RUBY_ARCH_DIR}
      )
 
    SET(RUBY_INCLUDE_DIRS ${RUBY_INCLUDE_DIRS} ${RUBY_CONFIG_INCLUDE_DIR} )
-ENDIF( ${Ruby_FIND_VERSION_SHORT_NODOT} GREATER 18  OR  ${_RUBY_VERSION_SHORT_NODOT} GREATER 18  OR  RUBY_HDR_DIR)
+ENDIF( "${Ruby_FIND_VERSION_SHORT_NODOT}" GREATER 18  OR  "${_RUBY_VERSION_SHORT_NODOT}" GREATER 18  OR  RUBY_HDR_DIR)
 
 
 # Determine the list of possible names for the ruby library
-SET(_RUBY_POSSIBLE_LIB_NAMES ruby ruby-static ruby${_RUBY_VERSION_SHORT})
+SET(_RUBY_POSSIBLE_LIB_NAMES ruby ruby-static ruby${_RUBY_VERSION_SHORT} ruby${_RUBY_VERSION_SHORT_NODOT} ruby-${_RUBY_VERSION_SHORT} ruby-${RUBY_VERSION})
 
 IF(WIN32)
    SET( _RUBY_MSVC_RUNTIME "" )
@@ -215,14 +198,14 @@ IF(WIN32)
 
    LIST(APPEND _RUBY_POSSIBLE_LIB_NAMES
                "msvcr${_RUBY_MSVC_RUNTIME}-ruby${_RUBY_NODOT_VERSION}"
-               "msvcr${_RUBY_MSVC_RUNTIME}-ruby${_RUBY_NODOT_VERSION}-static" 
+               "msvcr${_RUBY_MSVC_RUNTIME}-ruby${_RUBY_NODOT_VERSION}-static"
                "msvcrt-ruby${_RUBY_NODOT_VERSION}"
                "msvcrt-ruby${_RUBY_NODOT_VERSION}-static" )
 ENDIF(WIN32)
 
 FIND_LIBRARY(RUBY_LIBRARY NAMES ${_RUBY_POSSIBLE_LIB_NAMES} HINTS ${RUBY_POSSIBLE_LIB_DIR} )
 
-INCLUDE(FindPackageHandleStandardArgs)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 SET(_RUBY_REQUIRED_VARS RUBY_EXECUTABLE RUBY_INCLUDE_DIR RUBY_LIBRARY)
 IF(_RUBY_VERSION_SHORT_NODOT GREATER 18)
    LIST(APPEND _RUBY_REQUIRED_VARS RUBY_CONFIG_INCLUDE_DIR)
@@ -237,10 +220,15 @@ IF(_RUBY_DEBUG_OUTPUT)
    MESSAGE(STATUS "RUBY_POSSIBLE_LIB_DIR: ${RUBY_POSSIBLE_LIB_DIR}")
    MESSAGE(STATUS "Found RUBY_VERSION: \"${RUBY_VERSION}\" , short: \"${_RUBY_VERSION_SHORT}\", nodot: \"${_RUBY_VERSION_SHORT_NODOT}\"")
    MESSAGE(STATUS "_RUBY_REQUIRED_VARS: ${_RUBY_REQUIRED_VARS}")
+   MESSAGE(STATUS "RUBY_EXECUTABLE: ${RUBY_EXECUTABLE}")
+   MESSAGE(STATUS "RUBY_LIBRARY: ${RUBY_LIBRARY}")
+   MESSAGE(STATUS "RUBY_INCLUDE_DIR: ${RUBY_INCLUDE_DIR}")
+   MESSAGE(STATUS "RUBY_CONFIG_INCLUDE_DIR: ${RUBY_CONFIG_INCLUDE_DIR}")
    MESSAGE(STATUS "--------------------")
 ENDIF(_RUBY_DEBUG_OUTPUT)
 
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(Ruby  DEFAULT_MSG  ${_RUBY_REQUIRED_VARS})
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(Ruby  REQUIRED_VARS  ${_RUBY_REQUIRED_VARS}
+                                        VERSION_VAR RUBY_VERSION )
 
 MARK_AS_ADVANCED(
   RUBY_EXECUTABLE

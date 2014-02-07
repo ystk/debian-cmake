@@ -25,8 +25,8 @@ cmGlobalVisualStudio9Generator::cmGlobalVisualStudio9Generator()
 //----------------------------------------------------------------------------
 void cmGlobalVisualStudio9Generator::AddPlatformDefinitions(cmMakefile* mf)
 {
-  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", "X86");
-  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", "X86");
+  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", this->ArchitectureId);
+  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", this->ArchitectureId);
   mf->AddDefinition("MSVC90", "1");
 }
 
@@ -40,8 +40,9 @@ void cmGlobalVisualStudio9Generator::WriteSLNHeader(std::ostream& fout)
 ///! Create a local generator appropriate to this Global Generator
 cmLocalGenerator *cmGlobalVisualStudio9Generator::CreateLocalGenerator()
 {
-  cmLocalVisualStudio7Generator *lg = new cmLocalVisualStudio7Generator;
-  lg->SetVersion9();
+  cmLocalVisualStudio7Generator *lg
+    = new cmLocalVisualStudio7Generator(cmLocalVisualStudioGenerator::VS9);
+  lg->SetPlatformName(this->GetPlatformName());
   lg->SetExtraFlagTable(this->GetExtraFlagTableVS8());
   lg->SetGlobalGenerator(this);
   return lg;

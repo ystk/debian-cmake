@@ -20,7 +20,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # Note that this doesn't try to find the gnutls-extra package.
@@ -35,9 +35,10 @@ IF (NOT WIN32)
    # try using pkg-config to get the directories and then use these values
    # in the FIND_PATH() and FIND_LIBRARY() calls
    # also fills in GNUTLS_DEFINITIONS, although that isn't normally useful
-   FIND_PACKAGE(PkgConfig)
-   PKG_CHECK_MODULES(PC_GNUTLS gnutls)
+   FIND_PACKAGE(PkgConfig QUIET)
+   PKG_CHECK_MODULES(PC_GNUTLS QUIET gnutls)
    SET(GNUTLS_DEFINITIONS ${PC_GNUTLS_CFLAGS_OTHER})
+   SET(GNUTLS_VERSION_STRING ${PC_GNUTLS_VERSION})
 ENDIF (NOT WIN32)
 
 FIND_PATH(GNUTLS_INCLUDE_DIR gnutls/gnutls.h
@@ -56,8 +57,10 @@ MARK_AS_ADVANCED(GNUTLS_INCLUDE_DIR GNUTLS_LIBRARY)
 
 # handle the QUIETLY and REQUIRED arguments and set GNUTLS_FOUND to TRUE if 
 # all listed variables are TRUE
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(GnuTLS DEFAULT_MSG GNUTLS_LIBRARY GNUTLS_INCLUDE_DIR)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(GnuTLS
+                                  REQUIRED_VARS GNUTLS_LIBRARY GNUTLS_INCLUDE_DIR
+                                  VERSION_VAR GNUTLS_VERSION_STRING)
 
 IF(GNUTLS_FOUND)
     SET(GNUTLS_LIBRARIES    ${GNUTLS_LIBRARY})

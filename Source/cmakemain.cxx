@@ -9,8 +9,8 @@
   implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
   See the License for more information.
 ============================================================================*/
-// include these first, otherwise there will be problems on Windows 
-// with GetCurrentDirectory() being redefined 
+// include these first, otherwise there will be problems on Windows
+// with GetCurrentDirectory() being redefined
 #ifdef CMAKE_BUILD_WITH_CMAKE
 #include "cmDynamicLoader.h"
 #include "cmDocumentation.h"
@@ -62,6 +62,7 @@ static const char * cmDocumentationDescription[][3] =
   "  --config <cfg> = For multi-configuration tools, choose <cfg>.\n"   \
   "  --clean-first  = Build target 'clean' first, then build.\n"        \
   "                   (To clean only, use --target 'clean'.)\n"         \
+  "  --use-stderr  =  Don't merge stdout/stderr.\n"                     \
   "  --             = Pass remaining options to the native tool.\n"
 
 //----------------------------------------------------------------------------
@@ -71,11 +72,13 @@ static const char * cmDocumentationOptions[][3] =
   {"-E", "CMake command mode.",
    "For true platform independence, CMake provides a list of commands "
    "that can be used on all systems. Run with -E help for the usage "
-   "information. Commands available are: chdir, copy, copy_if_different "
-   "copy_directory, compare_files, echo, echo_append, environment, "
-   "make_directory, md5sum, remove_directory, remove, tar, time, "
-   "touch, touch_nocreate, write_regv, delete_regv, comspec, "
-   "create_symlink."},
+   "information. Commands available are: chdir, compare_files, copy, "
+   "copy_directory, copy_if_different, echo, echo_append, environment, "
+   "make_directory, md5sum, remove, remove_directory, rename, tar, time, "
+   "touch, touch_nocreate. In addition, some platform specific commands "
+   "are available. "
+   "On Windows: comspec, delete_regv, write_regv. "
+   "On UNIX: create_symlink."},
   {"-i", "Run in wizard mode.",
    "Wizard mode runs cmake interactively without a GUI.  The user is "
    "prompted to answer questions about the project configuration.  "
@@ -100,6 +103,11 @@ static const char * cmDocumentationOptions[][3] =
    "No configure or generate step is performed and the cache is not"
    " modified. If variables are defined using -D, this must be done "
    "before the -P argument."},
+  {"--find-package", "Run in pkg-config like mode.",
+   "Search a package using find_package() and print the resulting flags "
+   "to stdout. This can be used to use cmake instead of pkg-config to find "
+   "installed libraries in plain Makefile-based projects or in "
+   "autoconf-based projects (via share/aclocal/cmake.m4)."},
   {"--graphviz=[file]", "Generate graphviz of dependencies.",
    "Generate a graphviz input file that will contain all the library and "
    "executable dependencies in the project."},
@@ -107,7 +115,8 @@ static const char * cmDocumentationOptions[][3] =
    "Dump a wide range of information about the current system. If run "
    "from the top of a binary tree for a CMake project it will dump "
    "additional information such as the cache, log files etc."},
-  {"--debug-trycompile", "Do not delete the try compile directories..",
+  {"--debug-trycompile", "Do not delete the try_compile build tree. Only "
+   "useful on one try_compile at a time.",
    "Do not delete the files and directories created for try_compile calls. "
    "This is useful in debugging failed try_compiles. It may however "
    "change the results of the try-compiles as old junk from a previous "
@@ -120,6 +129,17 @@ static const char * cmDocumentationOptions[][3] =
   {"--trace", "Put cmake in trace mode.",
    "Print a trace of all calls made and from where with "
    "message(send_error ) calls."},
+  {"--warn-uninitialized", "Warn about uninitialized values.",
+   "Print a warning when an uninitialized variable is used."},
+  {"--warn-unused-vars", "Warn about unused variables.",
+   "Find variables that are declared or set, but not used."},
+  {"--no-warn-unused-cli", "Don't warn about command line options.",
+   "Don't find variables that are declared on the command line, but not "
+   "used."},
+  {"--check-system-vars", "Find problems with variable usage in system "
+   "files.", "Normally, unused and uninitialized variables are searched for "
+   "only in CMAKE_SOURCE_DIR and CMAKE_BINARY_DIR. This flag tells CMake to "
+   "warn about other files as well."},
   {"--help-command cmd [file]", "Print help for a single command and exit.",
    "Full documentation specific to the given command is displayed. "
    "If a file is specified, the documentation is written into and the output "
@@ -163,7 +183,7 @@ static const char * cmDocumentationOptions[][3] =
    "If a file is specified, the documentation is written into and the output "
    "format is determined depending on the filename suffix. Supported are man "
    "page, HTML, DocBook and plain text."},
-  {"--help-policy cmp [file]", 
+  {"--help-policy cmp [file]",
    "Print help for a single policy and exit.",
    "Full documentation specific to the given policy is displayed."
    "If a file is specified, the documentation is written into and the output "
@@ -174,7 +194,7 @@ static const char * cmDocumentationOptions[][3] =
    "If a file is specified, the documentation is written into and the output "
    "format is determined depending on the filename suffix. Supported are man "
    "page, HTML, DocBook and plain text."},
-  {"--help-property prop [file]", 
+  {"--help-property prop [file]",
    "Print help for a single property and exit.",
    "Full documentation specific to the given property is displayed."
    "If a file is specified, the documentation is written into and the output "
@@ -192,7 +212,7 @@ static const char * cmDocumentationOptions[][3] =
    "If a file is specified, the documentation is written into and the output "
    "format is determined depending on the filename suffix. Supported are man "
    "page, HTML, DocBook and plain text."},
-  {"--help-variable var [file]", 
+  {"--help-variable var [file]",
    "Print help for a single variable and exit.",
    "Full documentation specific to the given variable is displayed."
    "If a file is specified, the documentation is written into and the output "
@@ -276,13 +296,13 @@ static std::string cmakemainGetStack(void *clientdata)
   return msg;
 }
 
-static void cmakemainErrorCallback(const char* m, const char*, bool&, 
+static void cmakemainErrorCallback(const char* m, const char*, bool&,
                                    void *clientdata)
 {
   std::cerr << m << cmakemainGetStack(clientdata) << std::endl << std::flush;
 }
 
-static void cmakemainProgressCallback(const char *m, float prog, 
+static void cmakemainProgressCallback(const char *m, float prog,
                                       void* clientdata)
 {
   cmMakefile* mf = cmakemainGetMakefile(clientdata);
@@ -328,21 +348,22 @@ int do_cmake(int ac, char** av)
 
   if ( cmSystemTools::GetCurrentWorkingDirectory().size() == 0 )
     {
-    std::cerr << "Current working directory cannot be established." 
+    std::cerr << "Current working directory cannot be established."
               << std::endl;
     nocwd = 1;
     }
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
   cmDocumentation doc;
+  doc.addCMakeStandardDocSections();
   if(doc.CheckOptions(ac, av, "-E") || nocwd)
-    { 
+    {
     // Construct and print requested documentation.
     cmake hcm;
     hcm.AddCMakePaths();
     doc.SetCMakeRoot(hcm.GetCacheDefinition("CMAKE_ROOT"));
 
-    // the command line args are processed here so that you can do 
+    // the command line args are processed here so that you can do
     // -DCMAKE_MODULE_PATH=/some/path and have this value accessible here
     std::vector<std::string> args;
     for(int i =0; i < ac; ++i)
@@ -380,7 +401,7 @@ int do_cmake(int ac, char** av)
     doc.SetSections(propDocs);
 
     cmDocumentationEntry e;
-    e.Brief = 
+    e.Brief =
       "variables defined by cmake, that give information about the project, "
       "and cmake";
     doc.PrependSection("Variables that Provide Information",e);
@@ -397,7 +418,7 @@ int do_cmake(int ac, char** av)
       {
       doc.ClearSections();
       doc.SetSection("NOTE", cmDocumentationNOTE);
-      doc.Print(cmDocumentation::UsageForm, std::cerr);
+      doc.Print(cmDocumentation::UsageForm, 0, std::cerr);
       return 1;
       }
     return result;
@@ -405,13 +426,13 @@ int do_cmake(int ac, char** av)
 #else
   if ( nocwd || ac == 1 )
     {
-    std::cout << 
+    std::cout <<
       "Bootstrap CMake should not be used outside CMake build process."
               << std::endl;
     return 0;
     }
 #endif
-  
+
   bool wiz = false;
   bool sysinfo = false;
   bool command = false;
@@ -419,7 +440,7 @@ int do_cmake(int ac, char** av)
   bool list_all_cached = false;
   bool list_help = false;
   bool view_only = false;
-  bool script_mode = false;
+  cmake::WorkingMode workingMode = cmake::NORMAL_MODE;
   std::vector<std::string> args;
   for(int i =0; i < ac; ++i)
     {
@@ -432,7 +453,7 @@ int do_cmake(int ac, char** av)
       sysinfo = true;
       }
     // if command has already been set, then
-    // do not eat the -E 
+    // do not eat the -E
     else if (!command && strcmp(av[i], "-E") == 0)
       {
       command = true;
@@ -467,13 +488,19 @@ int do_cmake(int ac, char** av)
         }
       else
         {
-        script_mode = true;
+        workingMode = cmake::SCRIPT_MODE;
         args.push_back(av[i]);
         i++;
         args.push_back(av[i]);
         }
       }
-    else 
+    else if (!command && strncmp(av[i], "--find-package",
+                                 strlen("--find-package")) == 0)
+      {
+      workingMode = cmake::FIND_PACKAGE_MODE;
+      args.push_back(av[i]);
+      }
+    else
       {
       args.push_back(av[i]);
       }
@@ -486,23 +513,23 @@ int do_cmake(int ac, char** av)
   if (wiz)
     {
     cmakewizard wizard;
-    return wizard.RunWizard(args); 
+    return wizard.RunWizard(args);
     }
   if (sysinfo)
     {
     cmake cm;
     int ret = cm.GetSystemInformation(args);
-    return ret; 
+    return ret;
     }
-  cmake cm;  
+  cmake cm;
   cmSystemTools::SetErrorCallback(cmakemainErrorCallback, (void *)&cm);
   cm.SetProgressCallback(cmakemainProgressCallback, (void *)&cm);
-  cm.SetScriptMode(script_mode);
+  cm.SetWorkingMode(workingMode);
 
   int res = cm.Run(args, view_only);
   if ( list_cached || list_all_cached )
     {
-    cmCacheManager::CacheIterator it = 
+    cmCacheManager::CacheIterator it =
       cm.GetCacheManager()->GetCacheIterator();
     std::cout << "-- Cache values" << std::endl;
     for ( it.Begin(); !it.IsAtEnd(); it.Next() )
@@ -518,8 +545,8 @@ int do_cmake(int ac, char** av)
             {
             std::cout << "// " << it.GetProperty("HELPSTRING") << std::endl;
             }
-          std::cout << it.GetName() << ":" << 
-            cmCacheManager::TypeToString(it.GetType()) 
+          std::cout << it.GetName() << ":" <<
+            cmCacheManager::TypeToString(it.GetType())
             << "=" << it.GetValue() << std::endl;
           if ( list_help )
             {
@@ -554,6 +581,7 @@ static int do_build(int ac, char** av)
   std::string dir;
   std::vector<std::string> nativeOptions;
   bool clean = false;
+  cmSystemTools::OutputOption outputflag = cmSystemTools::OUTPUT_MERGE;
 
   enum Doing { DoingNone, DoingDir, DoingTarget, DoingConfig, DoingNative};
   Doing doing = DoingDir;
@@ -575,6 +603,10 @@ static int do_build(int ac, char** av)
       {
       clean = true;
       doing = DoingNone;
+      }
+    else if(strcmp(av[i], "--use-stderr") == 0)
+      {
+        outputflag = cmSystemTools::OUTPUT_NORMAL;
       }
     else if(strcmp(av[i], "--") == 0)
       {
@@ -621,6 +653,6 @@ static int do_build(int ac, char** av)
     }
 
   cmake cm;
-  return cm.Build(dir, target, config, nativeOptions, clean);
+  return cm.Build(dir, target, config, nativeOptions, clean, outputflag);
 #endif
 }

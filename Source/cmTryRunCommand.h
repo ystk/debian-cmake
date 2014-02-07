@@ -40,12 +40,12 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "try_run";}
+  virtual const char* GetName() const { return "try_run";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "Try compiling and then running some code.";
     }
@@ -53,7 +53,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  try_run(RUN_RESULT_VAR COMPILE_RESULT_VAR\n"
@@ -93,7 +93,10 @@ public:
       "that when crosscompiling, the cache variables will have to be set "
       "manually to the output of the executable. You can also \"guard\" the "
       "calls to try_run with if(CMAKE_CROSSCOMPILING) and provide an "
-      "easy-to-preset alternative for this case.\n";
+      "easy-to-preset alternative for this case.\n"
+      "Set variable CMAKE_TRY_COMPILE_CONFIGURATION to choose a build "
+      "configuration."
+      ;
     }
 
   cmTypeMacro(cmTryRunCommand, cmCoreTryCompile);

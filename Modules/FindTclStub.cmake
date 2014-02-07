@@ -31,7 +31,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 INCLUDE(FindTCL)
@@ -66,8 +66,6 @@ SET(TCLTK_POSSIBLE_LIB_PATHS
   "${TK_LIBRARY_PATH}"
   "${TCL_TCLSH_PATH_PARENT}/lib"
   "${TK_WISH_PATH_PARENT}/lib"
-  /usr/lib 
-  /usr/local/lib
 )
 
 IF(WIN32)

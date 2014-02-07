@@ -35,11 +35,42 @@ public:
   cmCPackRPMGenerator();
   virtual ~cmCPackRPMGenerator();
 
+  static bool CanGenerate()
+    {
+#ifdef __APPLE__
+    // on MacOS enable CPackRPM iff rpmbuild is found
+    std::vector<std::string> locations;
+    locations.push_back("/sw/bin");        // Fink
+    locations.push_back("/opt/local/bin"); // MacPorts
+    return cmSystemTools::FindProgram("rpmbuild") != "" ? true : false;
+#else
+    // legacy behavior on other systems
+    return true;
+#endif
+    }
+
 protected:
   virtual int InitializeInternal();
-  virtual int CompressFiles(const char* outFileName, const char* toplevel,
-    const std::vector<std::string>& files);
+  virtual int PackageFiles();
+  /**
+   * This method factors out the work done in component packaging case.
+   */
+  int PackageOnePack(std::string initialToplevel, std::string packageName);
+  /**
+   * The method used to package files when component
+   * install is used. This will create one
+   * archive for each component group.
+   */
+  int PackageComponents(bool ignoreGroup);
+  /**
+   * Special case of component install where all
+   * components will be put in a single installer.
+   */
+  int PackageComponentsAllInOne();
   virtual const char* GetOutputExtension() { return ".rpm"; }
+  virtual bool SupportsComponentInstallation() const;
+  virtual std::string GetComponentInstallDirNameSuffix(
+      const std::string& componentName);
 
 };
 

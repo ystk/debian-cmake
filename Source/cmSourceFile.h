@@ -44,7 +44,7 @@ public:
 
   ///! Set/Get a property of this source file
   void SetProperty(const char *prop, const char *value);
-  void AppendProperty(const char* prop, const char* value);
+  void AppendProperty(const char* prop, const char* value,bool asString=false);
   const char *GetProperty(const char *prop) const;
   bool GetPropertyAsBool(const char *prop) const;
 
@@ -60,7 +60,7 @@ public:
    * horrible interface, but is necessary for backwards
    * compatibility).
    */
-  std::string const& GetFullPath();
+  std::string const& GetFullPath(std::string* error = 0);
   std::string const& GetFullPath() const;
 
   /**
@@ -108,12 +108,15 @@ private:
   std::string FullPath;
   bool FindFullPathFailed;
 
-  bool FindFullPath();
+  bool FindFullPath(std::string* error);
   bool TryFullPath(const char* tryPath, const char* ext);
   void CheckExtension();
   void CheckLanguage(std::string const& ext);
 
   std::vector<std::string> Depends;
 };
+
+// TODO: Factor out into platform information modules.
+#define CM_HEADER_REGEX "\\.(h|hh|h\\+\\+|hm|hpp|hxx|in|txx|inl)$"
 
 #endif

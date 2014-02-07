@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 
@@ -20,6 +20,9 @@
 # make sure we don't use CMAKE_BASE_NAME from somewhere else
 SET(CMAKE_BASE_NAME)
 GET_FILENAME_COMPONENT(CMAKE_BASE_NAME ${CMAKE_RC_COMPILER} NAME_WE)
+IF("${CMAKE_BASE_NAME}" MATCHES "windres")
+  SET(CMAKE_BASE_NAME "windres")
+ENDIF()
 SET(CMAKE_SYSTEM_AND_RC_COMPILER_INFO_FILE
   ${CMAKE_ROOT}/Modules/Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME}.cmake)
 INCLUDE(Platform/${CMAKE_SYSTEM_NAME}-${CMAKE_BASE_NAME} OPTIONAL)

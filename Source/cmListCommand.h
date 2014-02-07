@@ -39,17 +39,17 @@ public:
   /**
    * This determines if the command is invoked when in script mode.
    */
-  virtual bool IsScriptable() { return true; }
+  virtual bool IsScriptable() const { return true; }
 
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "list";}
+  virtual const char* GetName() const { return "list";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation()
+  virtual const char* GetTerseDocumentation() const
     {
     return "List operations.";
     }
@@ -57,7 +57,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  list(LENGTH <list> <output variable>)\n"
@@ -83,6 +83,14 @@ public:
       "REMOVE_DUPLICATES will remove duplicated items in the list.\n"
       "REVERSE reverses the contents of the list in-place.\n"
       "SORT sorts the list in-place alphabetically.\n"
+      "The list subcommands APPEND, INSERT, REMOVE_AT, REMOVE_ITEM, "
+      "REMOVE_DUPLICATES, REVERSE and SORT may create new values for "
+      "the list within the current CMake variable scope. Similar to "
+      "the SET command, the LIST command creates new variable values "
+      "in the current scope, even if the list itself is actually "
+      "defined in a parent scope. To propagate the results of these "
+      "operations upwards, use SET with PARENT_SCOPE, SET with CACHE "
+      "INTERNAL, or some other means of value propagation.\n"
       "NOTES: A list in cmake is a ; separated group of strings. "
       "To create a list the set command can be used. For example, "
       "set(var a b c d e)  creates a list with a;b;c;d;e, and "

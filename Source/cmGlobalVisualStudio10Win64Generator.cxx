@@ -16,7 +16,6 @@
 //----------------------------------------------------------------------------
 cmGlobalVisualStudio10Win64Generator::cmGlobalVisualStudio10Win64Generator()
 {
-  this->PlatformName = "x64";
 }
 
 //----------------------------------------------------------------------------
@@ -36,4 +35,17 @@ void cmGlobalVisualStudio10Win64Generator
   mf->AddDefinition("CMAKE_FORCE_WIN64", "TRUE");
   mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", "x64");
   mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", "x64");
+}
+
+//----------------------------------------------------------------------------
+void cmGlobalVisualStudio10Win64Generator
+::EnableLanguage(std::vector<std::string> const& languages,
+                 cmMakefile* mf, bool optional)
+{
+  if(this->IsExpressEdition() && !this->Find64BitTools(mf))
+    {
+    return;
+    }
+  this->cmGlobalVisualStudio10Generator
+    ::EnableLanguage(languages, mf, optional);
 }

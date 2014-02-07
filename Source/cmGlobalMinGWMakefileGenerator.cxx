@@ -44,8 +44,15 @@ void cmGlobalMinGWMakefileGenerator
     {
     gxx = tgxx;
     }
+  std::string trc = cmSystemTools::FindProgram("windres", locations);
+  std::string rc = "windres.exe";
+  if(trc.size())
+    {
+    rc = trc;
+    }
   mf->AddDefinition("CMAKE_GENERATOR_CC", gcc.c_str());
   mf->AddDefinition("CMAKE_GENERATOR_CXX", gxx.c_str());
+  mf->AddDefinition("CMAKE_GENERATOR_RC", rc.c_str());
   this->cmGlobalUnixMakefileGenerator3::EnableLanguage(l, mf, optional);
 }
 
@@ -59,18 +66,6 @@ cmLocalGenerator *cmGlobalMinGWMakefileGenerator::CreateLocalGenerator()
   lg->SetPassMakeflags(false);
   lg->SetUnixCD(true);
   lg->SetMinGWMake(true);
-
-  // mingw32-make has trouble running code like
-  //
-  //  @echo message with spaces
-  //
-  // If quotes are added
-  //
-  //  @echo "message with spaces"
-  //
-  // it runs but the quotes are displayed.  Instead just use cmake to
-  // echo.
-  lg->SetNativeEchoCommand("@$(CMAKE_COMMAND) -E echo ", false);
   return lg;
 }
 

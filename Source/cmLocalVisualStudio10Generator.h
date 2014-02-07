@@ -25,7 +25,7 @@ class cmLocalVisualStudio10Generator : public cmLocalVisualStudio7Generator
 {
 public:
   ///! Set cache only and recurse to false by default.
-  cmLocalVisualStudio10Generator();
+  cmLocalVisualStudio10Generator(VSVersion v);
 
   virtual ~cmLocalVisualStudio10Generator();
 
@@ -36,6 +36,11 @@ public:
   virtual void Generate();
   virtual void ReadAndStoreExternalGUID(const char* name,
                                         const char* path);
+
+protected:
+  virtual const char* ReportErrorLabel() const;
+  virtual bool CustomCommandUseLocal() const { return true; }
+
 private:
 };
 #endif

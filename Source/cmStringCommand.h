@@ -45,17 +45,17 @@ public:
   /**
    * This determines if the command is invoked when in script mode.
    */
-  virtual bool IsScriptable() { return true; }
+  virtual bool IsScriptable() const { return true; }
 
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "string";}
+  virtual const char* GetName() const { return "string";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "String operations.";
     }
@@ -63,7 +63,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  string(REGEX MATCH <regular_expression>\n"
@@ -76,6 +76,8 @@ public:
       "  string(REPLACE <match_string>\n"
       "         <replace_string> <output variable>\n"
       "         <input> [<input>...])\n"
+      "  string(<MD5|SHA1|SHA224|SHA256|SHA384|SHA512>\n"
+      "         <output variable> <input>)\n"
       "  string(COMPARE EQUAL <string1> <string2> <output variable>)\n"
       "  string(COMPARE NOTEQUAL <string1> <string2> <output variable>)\n"
       "  string(COMPARE LESS <string1> <string2> <output variable>)\n"
@@ -90,6 +92,7 @@ public:
       "  string(STRIP <string> <output variable>)\n"
       "  string(RANDOM [LENGTH <length>] [ALPHABET <alphabet>]\n"
       "         [RANDOM_SEED <seed>] <output variable>)\n"
+      "  string(FIND <string> <substring> <output variable> [REVERSE])\n"
       "REGEX MATCH will match the regular expression once and store the "
       "match in the output variable.\n"
       "REGEX MATCHALL will match the regular expression as many times as "
@@ -102,6 +105,8 @@ public:
       "backslash through argument parsing.\n"
       "REPLACE will replace all occurrences of match_string in the input with "
       "replace_string and store the result in the output.\n"
+      "MD5, SHA1, SHA224, SHA256, SHA384, and SHA512 "
+      "will compute a cryptographic hash of the input string.\n"
       "COMPARE EQUAL/NOTEQUAL/LESS/GREATER will compare the strings and "
       "store true or false in the output variable.\n"
       "ASCII will convert all numbers into corresponding ASCII characters.\n"
@@ -109,7 +114,8 @@ public:
       "a file.\n"
       "TOUPPER/TOLOWER will convert string to upper/lower characters.\n"
       "LENGTH will return a given string's length.\n"
-      "SUBSTRING will return a substring of a given string.\n"
+      "SUBSTRING will return a substring of a given string. If length is "
+      "-1 the remainder of the string starting at begin will be returned.\n"
       "STRIP will return a substring of a given string with leading "
       "and trailing spaces removed.\n"
       "RANDOM will return a random string of given length consisting of "
@@ -117,6 +123,10 @@ public:
       "characters and default alphabet is all numbers and upper and "
       "lower case letters.  If an integer RANDOM_SEED is given, its "
       "value will be used to seed the random number generator.\n"
+      "FIND will return the position where the given substring was found "
+      "in the supplied string. If the REVERSE flag was used, the command "
+      "will search for the position of the last occurrence of the "
+      "specified substring.\n"
       "The following characters have special meaning in regular expressions:\n"
       "   ^         Matches at beginning of a line\n"
       "   $         Matches at end of a line\n"
@@ -144,6 +154,7 @@ protected:
   bool RegexMatch(std::vector<std::string> const& args);
   bool RegexMatchAll(std::vector<std::string> const& args);
   bool RegexReplace(std::vector<std::string> const& args);
+  bool HandleHashCommand(std::vector<std::string> const& args);
   bool HandleToUpperLowerCommand(std::vector<std::string> const& args,
                                  bool toUpper);
   bool HandleCompareCommand(std::vector<std::string> const& args);
@@ -152,6 +163,7 @@ protected:
   bool HandleSubstringCommand(std::vector<std::string> const& args);
   bool HandleStripCommand(std::vector<std::string> const& args);
   bool HandleRandomCommand(std::vector<std::string> const& args);
+  bool HandleFindCommand(std::vector<std::string> const& args);
 
   class RegexReplacement
   {

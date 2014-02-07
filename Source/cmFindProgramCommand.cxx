@@ -16,9 +16,10 @@
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
 #endif
-  
-cmFindProgramCommand::cmFindProgramCommand()
+
+void cmFindProgramCommand::GenerateDocumentation()
 {
+  this->cmFindBase::GenerateDocumentation();
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "FIND_XXX", "find_program");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
@@ -32,8 +33,8 @@ cmFindProgramCommand::cmFindProgramCommand()
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "XXX_SYSTEM", "");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
-                               "CMAKE_SYSTEM_XXX_PATH", 
-                               "CMAKE_SYSTEM_PROGRAM_PATH"); 
+                               "CMAKE_SYSTEM_XXX_PATH",
+                               "CMAKE_SYSTEM_PROGRAM_PATH");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "SEARCH_XXX_DESC", "program");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
@@ -41,7 +42,9 @@ cmFindProgramCommand::cmFindProgramCommand()
   cmSystemTools::ReplaceString(this->GenericDocumentation,
                                "XXX_SUBDIR", "[s]bin");
   cmSystemTools::ReplaceString(this->GenericDocumentation,
-                               "CMAKE_FIND_ROOT_PATH_MODE_XXX", 
+                               "XXX_EXTRA_PREFIX_ENTRY", "");
+  cmSystemTools::ReplaceString(this->GenericDocumentation,
+                               "CMAKE_FIND_ROOT_PATH_MODE_XXX",
                                "CMAKE_FIND_ROOT_PATH_MODE_PROGRAM");
 }
 
@@ -172,6 +175,8 @@ std::string cmFindProgramCommand::GetBundleExecutable(std::string bundlePath)
     
     // And finally to a c++ string
     executable = bundlePath + "/Contents/MacOS/" + std::string(buffer);
+    // Only release CFURLRef if it's not null
+    CFRelease( executableURL );
     }
 
   // Any CF objects returned from functions with "create" or 
@@ -179,7 +184,6 @@ std::string cmFindProgramCommand::GetBundleExecutable(std::string bundlePath)
   CFRelease( bundlePathCFS );
   CFRelease( bundleURL );
   CFRelease( appBundle );
-  CFRelease( executableURL );
 #endif
 
   return executable;

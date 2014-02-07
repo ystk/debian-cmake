@@ -47,12 +47,12 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "ctest_run_script";}
+  virtual const char* GetName() const { return "ctest_run_script";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "runs a ctest -S script";
     }
@@ -60,7 +60,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  ctest_run_script([NEW_PROCESS] script_file_name script_file_name1 \n"
@@ -68,7 +68,7 @@ public:
       "Runs a script or scripts much like if it was run from ctest -S. "
       "If no argument is provided then the current script is run using "
       "the current settings of the variables. If NEW_PROCESS is specified "
-      "then each script will be run in a seperate process."
+      "then each script will be run in a separate process."
       "If RETURN_VALUE is specified the return value of the last script "
       "run will be put into var.";
     }

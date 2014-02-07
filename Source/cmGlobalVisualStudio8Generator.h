@@ -32,13 +32,13 @@ public:
     return cmGlobalVisualStudio8Generator::GetActualName();}
   static const char* GetActualName() {return "Visual Studio 8 2005";}
 
+  virtual const char* GetPlatformName() const {return "Win32";}
+
   /** Get the documentation entry for this generator.  */
   virtual void GetDocumentation(cmDocumentationEntry& entry) const;
   
   ///! Create a local generator appropriate to this Global Generator
   virtual cmLocalGenerator *CreateLocalGenerator();
-
-  std::string const& GetPlatformName() const { return this->PlatformName; }
 
   /**
    * Override Configure and Generate to add the build-system check
@@ -77,7 +77,12 @@ protected:
   virtual void WriteSolutionConfigurations(std::ostream& fout);
   virtual void WriteProjectConfigurations(std::ostream& fout,
                                           const char* name,
-                                          bool partOfDefaultBuild);
-  std::string PlatformName; // Win32 or x64 
+                                          bool partOfDefaultBuild,
+                                          const char* platformMapping = NULL);
+  virtual bool ComputeTargetDepends();
+  virtual void WriteProjectDepends(std::ostream& fout, const char* name,
+                                   const char* path, cmTarget &t);
+
+  const char* ArchitectureId;
 };
 #endif

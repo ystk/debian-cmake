@@ -21,12 +21,12 @@ class cmGeneratedFileStream;
 
 /** \class cmExtraEclipseCDT4Generator
  * \brief Write Eclipse project files for Makefile based projects
- *
- * This generator is in early alpha stage.
  */
 class cmExtraEclipseCDT4Generator : public cmExternalMakefileProjectGenerator
 {
 public:
+  enum LinkType {VirtualFolder, LinkToFolder, LinkToFile };
+
   cmExtraEclipseCDT4Generator();
 
   static cmExternalMakefileProjectGenerator* New() {
@@ -42,13 +42,11 @@ public:
   virtual void GetDocumentation(cmDocumentationEntry& entry,
                                 const char*           fullName) const;
 
-  virtual void SetGlobalGenerator(cmGlobalGenerator* generator);
-
   virtual void Generate();
 
 private:
   // create .project file in the source tree
-  void CreateSourceProjectFile() const;
+  void CreateSourceProjectFile();
 
   // create .project file
   void CreateProjectFile();
@@ -70,13 +68,15 @@ private:
   static std::string EscapeForXML(const std::string& value);
 
   // Helper functions
-  static void AppendStorageScanners(cmGeneratedFileStream& fout, 
+  static void AppendStorageScanners(cmGeneratedFileStream& fout,
                                     const cmMakefile& makefile);
   static void AppendTarget         (cmGeneratedFileStream& fout,
                                     const std::string&     target,
                                     const std::string&     make,
+                                    const std::string&     makeArguments,
                                     const std::string&     path,
-                                    const char* prefix = "");
+                                    const char* prefix = "",
+                                    const char* makeTarget = NULL);
   static void AppendScannerProfile (cmGeneratedFileStream& fout,
                                     const std::string&   profileID,
                                     bool                 openActionEnabled,
@@ -90,7 +90,8 @@ private:
 
   static void AppendLinkedResource (cmGeneratedFileStream& fout,
                                     const std::string&     name,
-                                    const std::string&     path);
+                                    const std::string&     path,
+                                    LinkType linkType);
 
   bool AppendOutLinkedResource(cmGeneratedFileStream& fout,
                                const std::string&     defname,
@@ -100,8 +101,12 @@ private:
                                    const std::vector<std::string>& includeDirs,
                                    std::set<std::string>& emittedDirs);
 
-  static void AddEnvVar(cmGeneratedFileStream& fout, const char* envVar, 
+  static void AddEnvVar(cmGeneratedFileStream& fout, const char* envVar,
                         cmMakefile* mf);
+
+  void CreateLinksToSubprojects(cmGeneratedFileStream& fout,
+                                const std::string& baseDir);
+  void CreateLinksForTargets(cmGeneratedFileStream& fout);
 
   std::vector<std::string> SrcLinkedResources;
   std::vector<std::string> OutLinkedResources;
@@ -109,6 +114,7 @@ private:
   std::string HomeOutputDirectory;
   bool IsOutOfSourceBuild;
   bool GenerateSourceProject;
+  bool SupportsVirtualFolders;
 
 };
 

@@ -27,7 +27,7 @@
 inline int ctrl(int z)
 {
     return (z&037);
-} 
+}
 
 cmCursesMainForm::cmCursesMainForm(std::vector<std::string> const& args,
                                    int initWidth) :
@@ -80,7 +80,7 @@ cmCursesMainForm::~cmCursesMainForm()
     {
     delete this->CMakeInstance;
     this->CMakeInstance = 0;
-    }  
+    }
 }
 
 // See if a cache entry is in the list of entries in the ui.
@@ -99,7 +99,7 @@ bool cmCursesMainForm::LookForCacheEntry(const char* key)
       return true;
       }
     }
-  
+
   return false;
 }
 
@@ -114,7 +114,7 @@ void cmCursesMainForm::InitializeUI()
 
   // Count non-internal and non-static entries
   int count=0;
-  for(cmCacheManager::CacheIterator i = 
+  for(cmCacheManager::CacheIterator i =
         this->CMakeInstance->GetCacheManager()->NewIterator();
       !i.IsAtEnd(); i.Next())
     {
@@ -142,12 +142,12 @@ void cmCursesMainForm::InitializeUI()
     // Create the composites.
 
     // First add entries which are new
-    for(cmCacheManager::CacheIterator i = 
+    for(cmCacheManager::CacheIterator i =
           this->CMakeInstance->GetCacheManager()->NewIterator();
         !i.IsAtEnd(); i.Next())
       {
       const char* key = i.GetName();
-      if ( i.GetType() == cmCacheManager::INTERNAL || 
+      if ( i.GetType() == cmCacheManager::INTERNAL ||
            i.GetType() == cmCacheManager::STATIC ||
            i.GetType() == cmCacheManager::UNINITIALIZED )
         {
@@ -164,12 +164,12 @@ void cmCursesMainForm::InitializeUI()
       }
 
     // then add entries which are old
-    for(cmCacheManager::CacheIterator i = 
+    for(cmCacheManager::CacheIterator i =
           this->CMakeInstance->GetCacheManager()->NewIterator();
         !i.IsAtEnd(); i.Next())
       {
       const char* key = i.GetName();
-      if ( i.GetType() == cmCacheManager::INTERNAL || 
+      if ( i.GetType() == cmCacheManager::INTERNAL ||
            i.GetType() == cmCacheManager::STATIC ||
            i.GetType() == cmCacheManager::UNINITIALIZED )
         {
@@ -184,7 +184,7 @@ void cmCursesMainForm::InitializeUI()
         }
       }
     }
-  
+
   // Clean old entries
   if (this->Entries)
     {
@@ -197,7 +197,7 @@ void cmCursesMainForm::InitializeUI()
     }
   delete this->Entries;
   this->Entries = newEntries;
-  
+
   // Compute fields from composites
   this->RePost();
 }
@@ -224,7 +224,7 @@ void cmCursesMainForm::RePost()
     std::vector<cmCursesCacheEntryComposite*>::iterator it;
     for (it = this->Entries->begin(); it != this->Entries->end(); ++it)
       {
-      cmCacheManager::CacheIterator mit = 
+      cmCacheManager::CacheIterator mit =
         this->CMakeInstance->GetCacheManager()->GetCacheIterator((*it)->GetValue());
       if (mit.IsAtEnd() ||
           (!this->AdvancedMode && mit.GetPropertyAsBool("ADVANCED")))
@@ -242,7 +242,7 @@ void cmCursesMainForm::RePost()
   // Assign the fields: 3 for each entry: label, new entry marker
   // ('*' or ' ') and entry widget
   this->Fields = new FIELD*[3*this->NumberOfVisibleEntries+1];
-  int cc;
+  size_t cc;
   for ( cc = 0; cc < 3 * this->NumberOfVisibleEntries+1; cc ++ )
     {
     this->Fields[cc] = 0;
@@ -253,7 +253,7 @@ void cmCursesMainForm::RePost()
   std::vector<cmCursesCacheEntryComposite*>::iterator it;
   for (it = this->Entries->begin(); it != this->Entries->end(); ++it)
     {
-    cmCacheManager::CacheIterator mit = 
+    cmCacheManager::CacheIterator mit =
       this->CMakeInstance->GetCacheManager()->GetCacheIterator((*it)->GetValue());
     if (mit.IsAtEnd() ||
         (!this->AdvancedMode && mit.GetPropertyAsBool("ADVANCED")))
@@ -301,7 +301,7 @@ void cmCursesMainForm::Render(int left, int top, int width, int height)
     }
 
   // Wrong window size
-  if ( width < cmCursesMainForm::MIN_WIDTH  || 
+  if ( width < cmCursesMainForm::MIN_WIDTH  ||
        width < this->InitialWidth               ||
        height < cmCursesMainForm::MIN_HEIGHT )
     {
@@ -322,7 +322,7 @@ void cmCursesMainForm::Render(int left, int top, int width, int height)
     std::vector<cmCursesCacheEntryComposite*>::iterator it;
     for (it = this->Entries->begin(); it != this->Entries->end(); ++it)
       {
-      cmCacheManager::CacheIterator mit = 
+      cmCacheManager::CacheIterator mit =
         this->CMakeInstance->GetCacheManager()->GetCacheIterator((*it)->GetValue());
       if (mit.IsAtEnd() ||
           (!this->AdvancedMode && mit.GetPropertyAsBool("ADVANCED")))
@@ -334,32 +334,35 @@ void cmCursesMainForm::Render(int left, int top, int width, int height)
     }
 
   // Re-adjust the fields according to their place
-  bool isNewPage;
-  int i=0;
   this->NumberOfPages = 1;
-  std::vector<cmCursesCacheEntryComposite*>::iterator it;
-  for (it = this->Entries->begin(); it != this->Entries->end(); ++it)
+  if (height > 0)
     {
-    cmCacheManager::CacheIterator mit = 
-      this->CMakeInstance->GetCacheManager()->GetCacheIterator((*it)->GetValue());
-    if (mit.IsAtEnd() ||
-        (!this->AdvancedMode && mit.GetPropertyAsBool("ADVANCED")))
+    bool isNewPage;
+    int i=0;
+    std::vector<cmCursesCacheEntryComposite*>::iterator it;
+    for (it = this->Entries->begin(); it != this->Entries->end(); ++it)
       {
-      continue;
-      }
-    int row = (i % height) + 1;  
-    int page = (i / height) + 1;
-    isNewPage = ( page > 1 ) && ( row == 1 );
+      cmCacheManager::CacheIterator mit =
+        this->CMakeInstance->GetCacheManager()->GetCacheIterator((*it)->GetValue());
+      if (mit.IsAtEnd() ||
+          (!this->AdvancedMode && mit.GetPropertyAsBool("ADVANCED")))
+        {
+        continue;
+        }
+      int row = (i % height) + 1;
+      int page = (i / height) + 1;
+      isNewPage = ( page > 1 ) && ( row == 1 );
 
-    if (isNewPage)
-      {
-      this->NumberOfPages++;
+      if (isNewPage)
+        {
+        this->NumberOfPages++;
+        }
+      (*it)->Label->Move(left, top+row-1, isNewPage);
+      (*it)->IsNewLabel->Move(left+32, top+row-1, false);
+      (*it)->Entry->Move(left+33, top+row-1, false);
+      (*it)->Entry->SetPage(this->NumberOfPages);
+      i++;
       }
-    (*it)->Label->Move(left, top+row-1, isNewPage);
-    (*it)->IsNewLabel->Move(left+32, top+row-1, false);
-    (*it)->Entry->Move(left+33, top+row-1, false);
-    (*it)->Entry->SetPage(this->NumberOfPages);
-    i++;
     }
 
   // Post the form
@@ -369,7 +372,7 @@ void cmCursesMainForm::Render(int left, int top, int width, int height)
   this->UpdateStatusBar();
   this->PrintKeys();
 
-  touchwin(stdscr); 
+  touchwin(stdscr);
   refresh();
 }
 
@@ -377,7 +380,7 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
 {
   int x,y;
   getmaxyx(stdscr, y, x);
-  if ( x < cmCursesMainForm::MIN_WIDTH  || 
+  if ( x < cmCursesMainForm::MIN_WIDTH  ||
        x < this->InitialWidth               ||
        y < cmCursesMainForm::MIN_HEIGHT )
     {
@@ -396,7 +399,7 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
     {
     cw->PrintKeys();
     }
-  
+
 //    {
 //    }
 //  else
@@ -406,35 +409,33 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
   char thirdLine[512]="";
   if (process)
     {
-    sprintf(firstLine, 
-            "                                                               ");  
-    sprintf(secondLine, 
-            "                                                               ");  
-    sprintf(thirdLine, 
-            "                                                               ");  
+    const char* clearLine =
+      "                                                                    ";
+    strcpy(firstLine, clearLine);
+    strcpy(secondLine, clearLine);
+    strcpy(thirdLine, clearLine);
     }
   else
     {
     if (this->OkToGenerate)
       {
-      sprintf(firstLine,  
-              "Press [c] to configure     Press [g] to generate and exit");
+      sprintf(firstLine,
+              "Press [c] to configure       Press [g] to generate and exit");
       }
     else
       {
       sprintf(firstLine,  "Press [c] to configure                                   ");
       }
-    if (this->AdvancedMode)
-      {
-      sprintf(thirdLine,  "Press [t] to toggle advanced mode (Currently On)");
-      }
-    else
-      {
-      sprintf(thirdLine,  "Press [t] to toggle advanced mode (Currently Off)");
-      }
-    
-    sprintf(secondLine, 
-            "Press [h] for help         Press [q] to quit without generating");
+    {
+      const char* toggleKeyInstruction =
+        "Press [t] to toggle advanced mode (Currently %s)";
+      sprintf(thirdLine,
+              toggleKeyInstruction,
+              this->AdvancedMode ? "On" : "Off");
+    }
+    sprintf(secondLine,
+            "Press [h] for help           "
+            "Press [q] to quit without generating");
     }
 
   curses_move(y-4,0);
@@ -454,13 +455,13 @@ void cmCursesMainForm::PrintKeys(int process /* = 0 */)
   if (cw)
     {
     sprintf(firstLine, "Page %d of %d", cw->GetPage(), this->NumberOfPages);
-    curses_move(0,65-strlen(firstLine)-1);
+    curses_move(0,65-static_cast<unsigned int>(strlen(firstLine))-1);
     printw(firstLine);
     }
 //    }
 
   pos_form_cursor(this->Form);
-  
+
 }
 
 // Print the key of the current entry and the CMake version
@@ -470,7 +471,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   int x,y;
   getmaxyx(stdscr, y, x);
   // If window size is too small, display error and return
-  if ( x < cmCursesMainForm::MIN_WIDTH  || 
+  if ( x < cmCursesMainForm::MIN_WIDTH  ||
        x < this->InitialWidth               ||
        y < cmCursesMainForm::MIN_HEIGHT )
     {
@@ -479,10 +480,10 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
     char fmt[] = "Window is too small. A size of at least %dx%d is required.";
     printw(fmt,
            (cmCursesMainForm::MIN_WIDTH < this->InitialWidth ?
-            this->InitialWidth : cmCursesMainForm::MIN_WIDTH), 
+            this->InitialWidth : cmCursesMainForm::MIN_WIDTH),
            cmCursesMainForm::MIN_HEIGHT);
-    touchwin(stdscr); 
-    wrefresh(stdscr); 
+    touchwin(stdscr);
+    wrefresh(stdscr);
     return;
     }
 
@@ -499,10 +500,10 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   if ( lbl )
     {
     curField = lbl->GetValue();
-    
+
     // Get the help string of the current entry
     // and add it to the help string
-    cmCacheManager::CacheIterator it = 
+    cmCacheManager::CacheIterator it =
       this->CMakeInstance->GetCacheManager()->GetCacheIterator(curField);
     if (!it.IsAtEnd())
       {
@@ -526,10 +527,10 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   // Join the key, help string and pad with spaces
   // (or truncate) as necessary
   char bar[cmCursesMainForm::MAX_WIDTH];
-  int i, curFieldLen = strlen(curField);
-  int helpLen = strlen(help);
+  size_t i, curFieldLen = strlen(curField);
+  size_t helpLen = strlen(help);
 
-  int width;
+  size_t width;
   if (x < cmCursesMainForm::MAX_WIDTH )
     {
     width = x;
@@ -546,9 +547,9 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
     if ( curFieldLen < width )
       {
       strcpy(bar, curField);
-      for(i=curFieldLen; i < width; ++i) 
-        { 
-        bar[i] = ' '; 
+      for(i=curFieldLen; i < width; ++i)
+        {
+        bar[i] = ' ';
         }
       }
     else
@@ -575,14 +576,14 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
       else
         {
         strcpy(bar+curFieldLen+2, help);
-        for(i=curFieldLen+helpLen+2; i < width; ++i) 
-          { 
-          bar[i] = ' '; 
+        for(i=curFieldLen+helpLen+2; i < width; ++i)
+          {
+          bar[i] = ' ';
           }
         }
       }
     }
-    
+
 
   bar[width] = '\0';
 
@@ -592,7 +593,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   char version[cmCursesMainForm::MAX_WIDTH];
   char vertmp[128];
   sprintf(vertmp,"CMake Version %s", cmVersion::GetCMakeVersion());
-  int sideSpace = (width-strlen(vertmp));
+  size_t sideSpace = (width-strlen(vertmp));
   for(i=0; i<sideSpace; i++) { version[i] = ' '; }
   sprintf(version+sideSpace, "%s", vertmp);
   version[width] = '\0';
@@ -602,7 +603,7 @@ void cmCursesMainForm::UpdateStatusBar(const char* message)
   attron(A_STANDOUT);
   char format[] = "%s";
   printw(format, bar);
-  attroff(A_STANDOUT);  
+  attroff(A_STANDOUT);
   curses_move(y-4,0);
   printw(version);
   pos_form_cursor(this->Form);
@@ -628,7 +629,7 @@ void cmCursesMainForm::UpdateProgress(const char *msg, float prog, void* vp)
   cm->UpdateStatusBar(cmsg);
   cm->PrintKeys(1);
   curses_move(1,1);
-  touchwin(stdscr); 
+  touchwin(stdscr);
   refresh();
 }
 
@@ -640,7 +641,7 @@ int cmCursesMainForm::Configure(int noconfigure)
   curses_move(1,1);
   this->UpdateStatusBar("Configuring, please wait...");
   this->PrintKeys(1);
-  touchwin(stdscr); 
+  touchwin(stdscr);
   refresh();
   this->CMakeInstance->SetProgressCallback(cmCursesMainForm::UpdateProgress, this);
 
@@ -649,7 +650,7 @@ int cmCursesMainForm::Configure(int noconfigure)
   this->CMakeInstance->GetCacheManager()->SaveCache(
     this->CMakeInstance->GetHomeOutputDirectory());
   this->LoadCache(0);
-  
+
   // Get rid of previous errors
   this->Errors = std::vector<std::string>();
 
@@ -671,8 +672,8 @@ int cmCursesMainForm::Configure(int noconfigure)
     }
   this->CMakeInstance->SetProgressCallback(0, 0);
 
-  keypad(stdscr,TRUE); /* Use key symbols as 
-                          KEY_DOWN*/ 
+  keypad(stdscr,TRUE); /* Use key symbols as
+                          KEY_DOWN*/
 
   if( retVal != 0 || !this->Errors.empty())
     {
@@ -702,10 +703,10 @@ int cmCursesMainForm::Configure(int noconfigure)
     CurrentForm = this;
     this->Render(1,1,xx,yy);
     }
-   
+
   this->InitializeUI();
   this->Render(1, 1, xi, yi);
-  
+
   return 0;
 }
 
@@ -728,8 +729,8 @@ int cmCursesMainForm::Generate()
   int retVal = this->CMakeInstance->Generate();
 
   this->CMakeInstance->SetProgressCallback(0, 0);
-  keypad(stdscr,TRUE); /* Use key symbols as 
-                          KEY_DOWN*/ 
+  keypad(stdscr,TRUE); /* Use key symbols as
+                          KEY_DOWN*/
 
   if( retVal != 0 || !this->Errors.empty())
     {
@@ -761,10 +762,10 @@ int cmCursesMainForm::Generate()
     CurrentForm = this;
     this->Render(1,1,xx,yy);
     }
-  
+
   this->InitializeUI();
   this->Render(1, 1, xi, yi);
-  
+
   return 0;
 }
 
@@ -786,6 +787,7 @@ void cmCursesMainForm::RemoveEntry(const char* value)
     const char* val = (*it)->GetValue();
     if (  val && !strcmp(value, val) )
       {
+      this->CMakeInstance->UnwatchUnusedCli(value);
       this->Entries->erase(it);
       break;
       }
@@ -794,11 +796,11 @@ void cmCursesMainForm::RemoveEntry(const char* value)
 
 // copy from the list box to the cache manager
 void cmCursesMainForm::FillCacheManagerFromUI()
-{   
-  int size = this->Entries->size();
-  for(int i=0; i < size; i++)
+{
+  size_t size = this->Entries->size();
+  for(size_t i=0; i < size; i++)
     {
-    cmCacheManager::CacheIterator it = 
+    cmCacheManager::CacheIterator it =
       this->CMakeInstance->GetCacheManager()->GetCacheIterator(
         (*this->Entries)[i]->Key.c_str());
     if (!it.IsAtEnd())
@@ -866,16 +868,16 @@ void cmCursesMainForm::HandleInput()
       std::string searchstr = "Search: " + this->SearchString;
       this->UpdateStatusBar( searchstr.c_str() );
       this->PrintKeys(1);
-      curses_move(y-5,searchstr.size());
+      curses_move(y-5,static_cast<unsigned int>(searchstr.size()));
       //curses_move(1,1);
-      touchwin(stdscr); 
+      touchwin(stdscr);
       refresh();
       }
     int key = getch();
 
     getmaxyx(stdscr, y, x);
     // If window too small, handle 'q' only
-    if ( x < cmCursesMainForm::MIN_WIDTH  || 
+    if ( x < cmCursesMainForm::MIN_WIDTH  ||
          y < cmCursesMainForm::MIN_HEIGHT )
       {
       // quit
@@ -902,7 +904,7 @@ void cmCursesMainForm::HandleInput()
         this->SearchMode = false;
         if ( this->SearchString.size() > 0 )
           {
-          this->JumpToCacheEntry(-1, this->SearchString.c_str());
+          this->JumpToCacheEntry(this->SearchString.c_str());
           this->OldSearchString = this->SearchString;
           }
         this->SearchString = "";
@@ -944,7 +946,7 @@ void cmCursesMainForm::HandleInput()
       }
     if ((!currentWidget || !widgetHandled) && !this->SearchMode)
       {
-      // If the current widget does not want to handle input, 
+      // If the current widget does not want to handle input,
       // we handle it.
       sprintf(debugMessage, "Main form handling input, key: %d", key);
       cmCursesForm::LogMessage(debugMessage);
@@ -961,7 +963,7 @@ void cmCursesMainForm::HandleInput()
       else if ( key == KEY_DOWN || key == ctrl('n') )
         {
         FIELD* cur = current_field(this->Form);
-        int findex = field_index(cur);
+        size_t findex = field_index(cur);
         if ( findex == 3*this->NumberOfVisibleEntries-1 )
           {
           continue;
@@ -1024,7 +1026,7 @@ void cmCursesMainForm::HandleInput()
           this->Fields[findex-2]));
         const char* curField = lbl->GetValue();
         const char* helpString=0;
-        cmCacheManager::CacheIterator it = 
+        cmCacheManager::CacheIterator it =
           this->CMakeInstance->GetCacheManager()->GetCacheIterator(curField);
         if (!it.IsAtEnd())
           {
@@ -1048,7 +1050,7 @@ void cmCursesMainForm::HandleInput()
         CurrentForm = msgs;
         msgs->Render(1,1,x,y);
         msgs->HandleInput();
-        CurrentForm = this; 
+        CurrentForm = this;
         this->Render(1,1,x,y);
         set_current_field(this->Form, cur);
         }
@@ -1076,7 +1078,7 @@ void cmCursesMainForm::HandleInput()
         {
         if ( this->OldSearchString.size() > 0 )
           {
-          this->JumpToCacheEntry(-1, this->OldSearchString.c_str());
+          this->JumpToCacheEntry(this->OldSearchString.c_str());
           }
         }
       // switch advanced on/off
@@ -1108,7 +1110,7 @@ void cmCursesMainForm::HandleInput()
         {
         this->OkToGenerate = false;
         FIELD* cur = current_field(this->Form);
-        int findex = field_index(cur);
+        size_t findex = field_index(cur);
 
         // make the next or prev. current field after deletion
         // each entry consists of fields: label, isnew, value
@@ -1133,7 +1135,7 @@ void cmCursesMainForm::HandleInput()
         // each entry consists of fields: label, isnew, value
         // therefore, the label field for the is findex-2
         // (findex always corresponds to the value field)
-        cmCursesWidget* lbl 
+        cmCursesWidget* lbl
           = reinterpret_cast<cmCursesWidget*>(
             field_userptr(this->Fields[findex-2]));
         if ( lbl )
@@ -1173,15 +1175,15 @@ void cmCursesMainForm::HandleInput()
         }
       }
 
-    touchwin(stdscr); 
-    wrefresh(stdscr); 
+    touchwin(stdscr);
+    wrefresh(stdscr);
     }
 }
 
 int cmCursesMainForm::LoadCache(const char *)
 
 {
-  int r = this->CMakeInstance->LoadCache(); 
+  int r = this->CMakeInstance->LoadCache();
   if(r < 0)
     {
     return r;
@@ -1190,8 +1192,8 @@ int cmCursesMainForm::LoadCache(const char *)
   this->CMakeInstance->PreLoadCMakeFiles();
   return r;
 }
-  
-void cmCursesMainForm::JumpToCacheEntry(int idx, const char* astr)
+
+void cmCursesMainForm::JumpToCacheEntry(const char* astr)
 {
   std::string str;
   if ( astr )
@@ -1199,18 +1201,14 @@ void cmCursesMainForm::JumpToCacheEntry(int idx, const char* astr)
     str = cmSystemTools::LowerCase(astr);
     }
 
-  if ( idx > this->NumberOfVisibleEntries )
-    {
-    return;
-    }
-  if ( idx < 0 && str.size() == 0)
+  if(str.empty())
     {
     return;
     }
   FIELD* cur = current_field(this->Form);
   int start_index = field_index(cur);
   int findex = start_index;
-  while ( (findex / 3) != idx ) 
+  for(;;)
     {
     if ( str.size() > 0 )
       {
@@ -1232,7 +1230,7 @@ void cmCursesMainForm::JumpToCacheEntry(int idx, const char* astr)
           }
         }
       }
-    if ( findex >= 3* this->NumberOfVisibleEntries-1 )
+    if ( size_t(findex) >= 3* this->NumberOfVisibleEntries-1 )
       {
       set_current_field(this->Form, this->Fields[2]);
       }
@@ -1247,7 +1245,7 @@ void cmCursesMainForm::JumpToCacheEntry(int idx, const char* astr)
     /*
     char buffer[1024];
     sprintf(buffer, "Line: %d != %d / %d\n", findex, idx, this->NumberOfVisibleEntries);
-    touchwin(stdscr); 
+    touchwin(stdscr);
     refresh();
     this->UpdateStatusBar( buffer );
     usleep(100000);
@@ -1262,7 +1260,7 @@ void cmCursesMainForm::JumpToCacheEntry(int idx, const char* astr)
 }
 
 
-const char* cmCursesMainForm::s_ConstHelpMessage = 
+const char* cmCursesMainForm::s_ConstHelpMessage =
 "CMake is used to configure and generate build files for software projects. "
 "The basic steps for configuring a project with ccmake are as follows:\n\n"
 "1. Run ccmake in the directory where you want the object and executable files to be placed (build directory). If the source directory is not the same as this build directory, you have to specify it as an argument on the command line.\n\n"
@@ -1301,6 +1299,5 @@ const char* cmCursesMainForm::s_ConstHelpMessage =
 " g : generate build files and exit, only available when there are no "
 "new options and no errors have been detected during last configuration.\n"
 " l : shows last errors\n"
-" t : toggles advanced mode. In normal mode, only the most important options are shown. In advanced mode, all options are shown. We recommend using normal mode unless you are an expert.\n";
-
-
+" t : toggles advanced mode. In normal mode, only the most important options are shown. In advanced mode, all options are shown. We recommend using normal mode unless you are an expert.\n"
+" / : search for a variable name.\n";

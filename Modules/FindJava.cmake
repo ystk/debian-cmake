@@ -5,6 +5,8 @@
 #
 #  Java_JAVA_EXECUTABLE    = the full path to the Java runtime
 #  Java_JAVAC_EXECUTABLE   = the full path to the Java compiler
+#  Java_JAVAH_EXECUTABLE   = the full path to the Java header generator
+#  Java_JAVADOC_EXECUTABLE = the full path to the Java documention generator
 #  Java_JAR_EXECUTABLE     = the full path to the Java archiver
 #  Java_VERSION_STRING     = Version of the package found (java version), eg. 1.6.0_12
 #  Java_VERSION_MAJOR      = The major version of the package found.
@@ -12,6 +14,9 @@
 #  Java_VERSION_PATCH      = The patch version of the package found.
 #  Java_VERSION_TWEAK      = The tweak version of the package found (after '_')
 #  Java_VERSION            = This is set to: $major.$minor.$patch(.$tweak)
+#
+# The minimum required version of Java can be specified using the
+# standard CMake syntax, e.g. FIND_PACKAGE(Java 1.5)
 #
 # NOTE: ${Java_VERSION} and ${Java_VERSION_STRING} are not guaranteed to be
 # identical. For example some java version may return:
@@ -39,7 +44,7 @@
 
 #=============================================================================
 # Copyright 2002-2009 Kitware, Inc.
-# Copyright 2009 Mathieu Malaterre <mathieu.malaterre@gmail.com>
+# Copyright 2009-2011 Mathieu Malaterre <mathieu.malaterre@gmail.com>
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -48,7 +53,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # The HINTS option should only be used for values computed from the system.
@@ -83,7 +88,6 @@ FIND_PROGRAM(Java_JAVA_EXECUTABLE
 )
 
 IF(Java_JAVA_EXECUTABLE)
-    set(_java_version_acceptable TRUE)
     EXECUTE_PROCESS(COMMAND ${Java_JAVA_EXECUTABLE} -version
       RESULT_VARIABLE res
       OUTPUT_VARIABLE var
@@ -103,9 +107,9 @@ IF(Java_JAVA_EXECUTABLE)
       # 2. OpenJDK 1.6
       # 3. GCJ 1.5
       # 4. Kaffe 1.4.2
-      IF(var MATCHES "java version \"[0-9]+\\.[0-9]+\\.[0-9_]+[oem-]*\".*")
+      IF(var MATCHES "java version \"[0-9]+\\.[0-9]+\\.[0-9_.]+.*\".*")
         # This is most likely Sun / OpenJDK, or maybe GCJ-java compat layer
-        STRING( REGEX REPLACE ".* version \"([0-9]+\\.[0-9]+\\.[0-9_]+)[oem-]*\".*"
+        STRING( REGEX REPLACE ".* version \"([0-9]+\\.[0-9]+\\.[0-9_.]+.*)\".*"
                 "\\1" Java_VERSION_STRING "${var}" )
       ELSEIF(var MATCHES "java full version \"kaffe-[0-9]+\\.[0-9]+\\.[0-9_]+\".*")
         # Kaffe style
@@ -114,37 +118,20 @@ IF(Java_JAVA_EXECUTABLE)
       ELSE()
         IF(NOT Java_FIND_QUIETLY)
           message(WARNING "regex not supported: ${var}. Please report")
-          set(_java_version_acceptable FALSE)
         ENDIF(NOT Java_FIND_QUIETLY)
       ENDIF()
       STRING( REGEX REPLACE "([0-9]+).*" "\\1" Java_VERSION_MAJOR "${Java_VERSION_STRING}" )
       STRING( REGEX REPLACE "[0-9]+\\.([0-9]+).*" "\\1" Java_VERSION_MINOR "${Java_VERSION_STRING}" )
       STRING( REGEX REPLACE "[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" Java_VERSION_PATCH "${Java_VERSION_STRING}" )
       # warning tweak version can be empty:
-      STRING( REGEX REPLACE "[0-9]+\\.[0-9]+\\.[0-9]+\\_?([0-9]*)$" "\\1" Java_VERSION_TWEAK "${Java_VERSION_STRING}" )
+      STRING( REGEX REPLACE "[0-9]+\\.[0-9]+\\.[0-9]+[_\\.]?([0-9]*).*$" "\\1" Java_VERSION_TWEAK "${Java_VERSION_STRING}" )
       if( Java_VERSION_TWEAK STREQUAL "" ) # check case where tweak is not defined
         set(Java_VERSION ${Java_VERSION_MAJOR}.${Java_VERSION_MINOR}.${Java_VERSION_PATCH})
       else( )
         set(Java_VERSION ${Java_VERSION_MAJOR}.${Java_VERSION_MINOR}.${Java_VERSION_PATCH}.${Java_VERSION_TWEAK})
       endif( )
-      # display info
-      #MESSAGE( STATUS "Java version ${Java_VERSION_STRING} configured successfully!" ) # keep me, used for debug
-      IF(NOT Java_FIND_QUIETLY)
-        MESSAGE( STATUS "Java version ${Java_VERSION} configured successfully!" )
-      ENDIF(NOT Java_FIND_QUIETLY)
     ENDIF()
 
-    # check version if requested:
-    if( Java_FIND_VERSION )
-      if("${Java_VERSION}" VERSION_LESS "${Java_FIND_VERSION}")
-        set(_java_version_acceptable FALSE)
-      endif("${Java_VERSION}" VERSION_LESS "${Java_FIND_VERSION}")
-      if( Java_FIND_VERSION_EXACT )
-        if("${Java_VERSION}" VERSION_GREATER "${Java_FIND_VERSION}")
-          set(_java_version_acceptable FALSE)
-        endif("${Java_VERSION}" VERSION_GREATER "${Java_FIND_VERSION}")
-      endif( Java_FIND_VERSION_EXACT )
-    endif( Java_FIND_VERSION )
 ENDIF(Java_JAVA_EXECUTABLE)
 
 
@@ -160,22 +147,33 @@ FIND_PROGRAM(Java_JAVAC_EXECUTABLE
   PATHS ${_JAVA_PATHS}
 )
 
-include(FindPackageHandleStandardArgs)
+FIND_PROGRAM(Java_JAVAH_EXECUTABLE
+  NAMES javah
+  HINTS ${_JAVA_HINTS}
+  PATHS ${_JAVA_PATHS}
+)
+
+FIND_PROGRAM(Java_JAVADOC_EXECUTABLE
+  NAMES javadoc
+  HINTS ${_JAVA_HINTS}
+  PATHS ${_JAVA_PATHS}
+)
+
+include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 if(Java_FIND_COMPONENTS)
   foreach(component ${Java_FIND_COMPONENTS})
     # User just want to execute some Java byte-compiled
     if(component STREQUAL "Runtime")
-      find_package_handle_standard_args(Java DEFAULT_MSG
-        Java_JAVA_EXECUTABLE
-        _java_version_acceptable
-      )
+      find_package_handle_standard_args(Java
+        REQUIRED_VARS Java_JAVA_EXECUTABLE
+        VERSION_VAR Java_VERSION
+        )
     elseif(component STREQUAL "Development")
-      find_package_handle_standard_args(Java DEFAULT_MSG
-        Java_JAVA_EXECUTABLE
-        Java_JAR_EXECUTABLE
-        Java_JAVAC_EXECUTABLE
-        _java_version_acceptable
-      )
+      find_package_handle_standard_args(Java
+        REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAR_EXECUTABLE Java_JAVAC_EXECUTABLE
+                      Java_JAVAH_EXECUTABLE Java_JAVADOC_EXECUTABLE
+        VERSION_VAR Java_VERSION
+        )
     else()
       message(FATAL_ERROR "Comp: ${component} is not handled")
     endif()
@@ -183,12 +181,11 @@ if(Java_FIND_COMPONENTS)
   endforeach(component)
 else()
   # Check for everything
-  find_package_handle_standard_args(Java DEFAULT_MSG
-    Java_JAVA_EXECUTABLE
-    Java_JAR_EXECUTABLE
-    Java_JAVAC_EXECUTABLE
-    _java_version_acceptable
-  )
+  find_package_handle_standard_args(Java
+    REQUIRED_VARS Java_JAVA_EXECUTABLE Java_JAR_EXECUTABLE Java_JAVAC_EXECUTABLE
+                  Java_JAVAH_EXECUTABLE Java_JAVADOC_EXECUTABLE
+    VERSION_VAR Java_VERSION
+    )
 endif()
 
 
@@ -196,6 +193,8 @@ MARK_AS_ADVANCED(
   Java_JAVA_EXECUTABLE
   Java_JAR_EXECUTABLE
   Java_JAVAC_EXECUTABLE
+  Java_JAVAH_EXECUTABLE
+  Java_JAVADOC_EXECUTABLE
   )
 
 # LEGACY

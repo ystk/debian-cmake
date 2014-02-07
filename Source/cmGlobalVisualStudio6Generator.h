@@ -82,7 +82,7 @@ public:
                                         std::string& dir);
 
   ///! What is the configurations directory variable called?
-  virtual const char* GetCMakeCFGInitDirectory()  { return "$(IntDir)"; }
+  virtual const char* GetCMakeCFGIntDir() const { return "$(IntDir)"; }
 
 protected:
   virtual const char* GetIDEVersion() { return "6.0"; }
@@ -96,6 +96,7 @@ private:
                             const char* name, const char* path,
                             const std::set<cmStdString>& dependencies);
   void WriteDSWFooter(std::ostream& fout);
+  virtual std::string WriteUtilityDepend(cmTarget* target);
 };
 
 #endif

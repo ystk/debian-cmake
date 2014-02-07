@@ -41,17 +41,21 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 INCLUDE(CMakeFindFrameworks)
 INCLUDE(FindTclsh)
 INCLUDE(FindWish)
 
-GET_FILENAME_COMPONENT(TCL_TCLSH_PATH "${TCL_TCLSH}" PATH)
-GET_FILENAME_COMPONENT(TCL_TCLSH_PATH_PARENT "${TCL_TCLSH_PATH}" PATH)
-STRING(REGEX REPLACE 
-  "^.*tclsh([0-9]\\.*[0-9]).*$" "\\1" TCL_TCLSH_VERSION "${TCL_TCLSH}")
+IF(TCLSH_VERSION_STRING)
+  SET(TCL_TCLSH_VERSION "${TCLSH_VERSION_STRING}")
+ELSE(TCLSH_VERSION_STRING)
+  GET_FILENAME_COMPONENT(TCL_TCLSH_PATH "${TCL_TCLSH}" PATH)
+  GET_FILENAME_COMPONENT(TCL_TCLSH_PATH_PARENT "${TCL_TCLSH_PATH}" PATH)
+  STRING(REGEX REPLACE
+    "^.*tclsh([0-9]\\.*[0-9]).*$" "\\1" TCL_TCLSH_VERSION "${TCL_TCLSH}")
+ENDIF(TCLSH_VERSION_STRING)
 
 GET_FILENAME_COMPONENT(TK_WISH_PATH "${TK_WISH}" PATH)
 GET_FILENAME_COMPONENT(TK_WISH_PATH_PARENT "${TK_WISH_PATH}" PATH)
@@ -78,8 +82,6 @@ SET(TCLTK_POSSIBLE_LIB_PATHS
   "${TK_LIBRARY_PATH}"
   "${TCL_TCLSH_PATH_PARENT}/lib"
   "${TK_WISH_PATH_PARENT}/lib"
-  /usr/lib 
-  /usr/local/lib
   )
 
 IF(WIN32)
@@ -104,7 +106,7 @@ ENDIF(WIN32)
 FIND_LIBRARY(TCL_LIBRARY
   NAMES 
   tcl   
-  tcl${TK_LIBRARY_VERSION} tcl${TCL_TCLSH_VERSION} tcl${TK_WISH_VERSION}
+  tcl${TCL_LIBRARY_VERSION} tcl${TCL_TCLSH_VERSION} tcl${TK_WISH_VERSION}
   tcl86 tcl8.6 
   tcl85 tcl8.5 
   tcl84 tcl8.4 
@@ -117,7 +119,7 @@ FIND_LIBRARY(TCL_LIBRARY
 FIND_LIBRARY(TK_LIBRARY 
   NAMES 
   tk
-  tk${TCL_LIBRARY_VERSION} tk${TCL_TCLSH_VERSION} tk${TK_WISH_VERSION}
+  tk${TK_LIBRARY_VERSION} tk${TCL_TCLSH_VERSION} tk${TK_WISH_VERSION}
   tk86 tk8.6
   tk85 tk8.5 
   tk84 tk8.4 
@@ -158,8 +160,6 @@ SET(TCLTK_POSSIBLE_INCLUDE_PATHS
   ${TK_FRAMEWORK_INCLUDES} 
   "${TCL_TCLSH_PATH_PARENT}/include"
   "${TK_WISH_PATH_PARENT}/include"
-  /usr/include
-  /usr/local/include
   /usr/include/tcl${TK_LIBRARY_VERSION}
   /usr/include/tcl${TCL_LIBRARY_VERSION}
   /usr/include/tcl8.6
@@ -197,7 +197,7 @@ FIND_PATH(TK_INCLUDE_PATH
 
 # handle the QUIETLY and REQUIRED arguments and set TCL_FOUND to TRUE if 
 # all listed variables are TRUE
-INCLUDE(FindPackageHandleStandardArgs)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(TCL DEFAULT_MSG TCL_LIBRARY TCL_INCLUDE_PATH)
 SET(TCLTK_FIND_REQUIRED ${TCL_FIND_REQUIRED})

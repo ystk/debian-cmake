@@ -22,7 +22,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 FIND_PATH(SDLMIXER_INCLUDE_DIR SDL_mixer.h
@@ -39,8 +39,6 @@ FIND_PATH(SDLMIXER_INCLUDE_DIR SDL_mixer.h
   /usr/local/include/SDL11 # FreeBSD ports
   /usr/include/SDL12
   /usr/include/SDL11
-  /usr/local/include
-  /usr/include
   /sw/include/SDL # Fink
   /sw/include
   /opt/local/include/SDL # DarwinPorts
@@ -60,16 +58,13 @@ FIND_LIBRARY(SDLMIXER_LIBRARY
   PATHS
   ~/Library/Frameworks
   /Library/Frameworks
-  /usr/local
-  /usr
   /sw
   /opt/local
   /opt/csw
   /opt
 )
 
-SET(SDLMIXER_FOUND "NO")
-IF(SDLMIXER_LIBRARY AND SDLMIXER_INCLUDE_DIR)
-  SET(SDLMIXER_FOUND "YES")
-ENDIF(SDLMIXER_LIBRARY AND SDLMIXER_INCLUDE_DIR)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(SDLMIXER
+                                  REQUIRED_VARS SDLMIXER_LIBRARY SDLMIXER_INCLUDE_DIR)

@@ -7,9 +7,20 @@ find_package(CVS)
 find_package(Subversion)
 find_package(Git)
 
+option(ExternalProjectTest_USE_FOLDERS "Enable folder grouping in IDEs." ON)
+if(ExternalProjectTest_USE_FOLDERS)
+  set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+else()
+  set_property(GLOBAL PROPERTY USE_FOLDERS OFF)
+endif()
+
+set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER
+  "CMakePredefinedTargets-in-ExternalProjectTest")
+
 set(base "${CMAKE_BINARY_DIR}/CMakeExternals")
 set(binary_base "${base}/Build")
 set_property(DIRECTORY PROPERTY EP_BASE ${base})
+set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
 if(NOT DEFINED can_build_tutorial_step5)
   set(can_build_tutorial_step5 1)
@@ -41,6 +52,31 @@ endif()
 
 # Empty projects that test all the known ExternalProject_Add argument key words:
 #
+set(proj AAA-TestAlphabetization)
+ExternalProject_Add(${proj}
+  BUILD_COMMAND ""
+  CONFIGURE_COMMAND ""
+  DOWNLOAD_COMMAND ""
+  INSTALL_COMMAND ""
+)
+
+set(proj ZZZ-TestAlphabetization)
+ExternalProject_Add(${proj}
+  BUILD_COMMAND ""
+  CONFIGURE_COMMAND ""
+  DOWNLOAD_COMMAND ""
+  INSTALL_COMMAND ""
+)
+
+set(proj TargetNameSameAsFolder)
+ExternalProject_Add(${proj}
+  BUILD_COMMAND ""
+  CONFIGURE_COMMAND ""
+  DOWNLOAD_COMMAND ""
+  INSTALL_COMMAND ""
+)
+set_property(TARGET ${proj} PROPERTY FOLDER "${proj}")
+
 set(proj MinimalNoOpProject)
 ExternalProject_Add(${proj}
   BUILD_COMMAND ""
@@ -61,14 +97,19 @@ ExternalProject_Add(${proj}
   DOWNLOAD_COMMAND ""
   INSTALL_COMMAND ""
   PATCH_COMMAND ""
+  STEP_TARGETS install update
   SVN_REPOSITORY ""
   SVN_REVISION ""
+  SVN_USERNAME ""
+  SVN_PASSWORD ""
+  SVN_TRUST_CERT 1
   TEST_COMMAND ""
   TIMEOUT ""
   URL ""
   URL_MD5 ""
   UPDATE_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "")
 
 
 # Local DIR:
@@ -77,9 +118,12 @@ if(can_build_tutorial_step5)
   set(proj TutorialStep5-Local)
   ExternalProject_Add(${proj}
     URL "${CMAKE_CURRENT_SOURCE_DIR}/../Tutorial/Step5"
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -G ${CMAKE_GENERATOR} <SOURCE_DIR>
+    CMAKE_CACHE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    CMAKE_ARGS -G ${CMAKE_GENERATOR} <SOURCE_DIR>
     TEST_BEFORE_INSTALL 1
+    LOG_INSTALL 1
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "Local")
   ExternalProject_Get_Property(${proj} install_dir)
   set(TutorialStep5_install_dir ${install_dir})
 
@@ -88,7 +132,9 @@ if(can_build_tutorial_step5)
     URL "${CMAKE_CURRENT_SOURCE_DIR}/../Tutorial/Step5"
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -G ${CMAKE_GENERATOR} <SOURCE_DIR>
     TEST_AFTER_INSTALL 1
+    LOG_TEST 1
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "Local")
 endif()
 
 
@@ -104,7 +150,9 @@ ExternalProject_Add(${proj}
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
              -DTEST_LIST:STRING=A::B::C
   INSTALL_COMMAND ""
+  LOG_CONFIGURE 1
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/TAR")
 
 set(proj TutorialStep1-LocalNoDirTAR)
 ExternalProject_Add(${proj}
@@ -115,6 +163,7 @@ ExternalProject_Add(${proj}
              -DTEST_LIST:STRING=1@@2@@3
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/TAR")
 ExternalProject_Add_Step(${proj} mypatch
   COMMAND ${CMAKE_COMMAND} -E echo "This is a custom external project step."
   COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/Step1Patch.cmake
@@ -132,7 +181,9 @@ ExternalProject_Add(${proj}
   URL_MD5 38c648e817339c356f6be00eeed79bd0
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -G ${CMAKE_GENERATOR} <SOURCE_DIR>
   INSTALL_COMMAND ""
+  LOG_BUILD 1
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/TGZ")
 
 set(proj TutorialStep1-LocalNoDirTGZ)
 ExternalProject_Add(${proj}
@@ -142,6 +193,7 @@ ExternalProject_Add(${proj}
   CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/TGZ")
 
 
 # Local BZ2:
@@ -158,6 +210,7 @@ ExternalProject_Add(${proj}
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/BZ2")
 
 set(proj TutorialStep1-LocalNoDirBZ2)
 ExternalProject_Add(${proj}
@@ -166,6 +219,7 @@ ExternalProject_Add(${proj}
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/BZ2")
 
 
 # Local ZIP:
@@ -182,6 +236,7 @@ ExternalProject_Add(${proj}
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/ZIP")
 
 set(proj TutorialStep1-LocalNoDirZIP)
 ExternalProject_Add(${proj}
@@ -190,6 +245,7 @@ ExternalProject_Add(${proj}
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
 )
+set_property(TARGET ${proj} PROPERTY FOLDER "Local/ZIP")
 
 
 # CVS-based tests:
@@ -221,6 +277,20 @@ if(do_cvs_tests)
     CONFIGURE_COMMAND "${CVS_EXECUTABLE}" --version
     INSTALL_COMMAND ""
   )
+  set_property(TARGET ${proj}
+    PROPERTY FOLDER "SetupRepos/Local/Deeply/Nested/For/Testing")
+
+  # The MSYS cvs tool interprets "c:/" as a "machine:" name for SSH.
+  # Detect the MSYS cvs and convert the repo path to an MSYS path.
+  if(WIN32)
+    if(EXISTS "${CVS_EXECUTABLE}")
+      file(STRINGS "${CVS_EXECUTABLE}" cvs_is_msys LIMIT_COUNT 1 REGEX "[Mm][Ss][Yy][Ss]")
+      if(cvs_is_msys)
+        message(STATUS "'${CVS_EXECUTABLE}' is from MSYS (contains '${cvs_is_msys}')")
+        string(REGEX REPLACE "^([A-Za-z]):" "/\\1" local_cvs_repo "${local_cvs_repo}")
+      endif()
+    endif()
+  endif()
 
   # CVS by date stamp:
   #
@@ -235,6 +305,7 @@ if(do_cvs_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalCVSRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "CVS")
 
   # CVS by tag:
   #
@@ -249,6 +320,7 @@ if(do_cvs_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalCVSRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "CVS")
 
   # Live CVS / HEAD (no CVS_TAG):
   #
@@ -268,6 +340,7 @@ if(do_cvs_tests)
     DEPENDS "TutorialStep1-CVS-20090626"
     DEPENDS "TutorialStep1-CVS-testtag1"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "CVS")
 endif()
 
 
@@ -282,13 +355,6 @@ endif()
 # Only do svn tests with svn >= version 1.2
 #
 if(do_svn_tests)
-  execute_process(COMMAND ${Subversion_SVN_EXECUTABLE} --version
-    OUTPUT_VARIABLE Subversion_VERSION_SVN
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  string(REGEX REPLACE "^(.*\n)?svn, version ([.0-9]+).*"
-    "\\2" Subversion_VERSION_SVN "${Subversion_VERSION_SVN}")
-  message(STATUS "Subversion_VERSION_SVN='${Subversion_VERSION_SVN}'")
-
   if(Subversion_VERSION_SVN VERSION_LESS 1.2)
     message(STATUS "No ExternalProject svn tests with svn client less than version 1.2")
     set(do_svn_tests 0)
@@ -320,6 +386,8 @@ if(do_svn_tests)
     CONFIGURE_COMMAND "${Subversion_SVN_EXECUTABLE}" --version
     INSTALL_COMMAND ""
   )
+  set_property(TARGET ${proj}
+    PROPERTY FOLDER "SetupRepos/Local/Deeply/Nested/For/Testing")
 
   # SVN by date stamp:
   #
@@ -333,6 +401,7 @@ if(do_svn_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalSVNRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "SVN")
 
   # SVN by revision number:
   #
@@ -346,6 +415,7 @@ if(do_svn_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalSVNRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "SVN")
 
   # Live SVN / trunk (no SVN_REVISION):
   #
@@ -356,7 +426,9 @@ if(do_svn_tests)
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalSVNRepository"
+    LOG_DOWNLOAD 1
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "SVN")
 endif()
 
 
@@ -394,6 +466,8 @@ if(do_git_tests)
     CONFIGURE_COMMAND "${GIT_EXECUTABLE}" --version
     INSTALL_COMMAND ""
   )
+  set_property(TARGET ${proj}
+    PROPERTY FOLDER "SetupRepos/Local/Deeply/Nested/For/Testing")
 
   # git by commit id:
   #
@@ -407,6 +481,7 @@ if(do_git_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalGITRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "GIT")
 
   # git by explicit branch/tag name:
   #
@@ -420,6 +495,7 @@ if(do_git_tests)
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalGITRepository"
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "GIT")
 
   # Live git / master (no GIT_TAG):
   #
@@ -430,7 +506,9 @@ if(do_git_tests)
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     INSTALL_COMMAND ""
     DEPENDS "SetupLocalGITRepository"
+    LOG_UPDATE 1
   )
+  set_property(TARGET ${proj} PROPERTY FOLDER "GIT")
 endif()
 
 

@@ -15,11 +15,6 @@
 #include "cmCommand.h"
 #include "cmFunctionBlocker.h"
 
-/** \class cmIfFunctionBlocker
- * \brief subclass of function blocker
- *
- * 
- */
 class cmIfFunctionBlocker : public cmFunctionBlocker
 {
 public:
@@ -39,11 +34,7 @@ public:
   unsigned int ScopeDepth;
 };
 
-/** \class cmIfCommand
- * \brief starts an if block
- *
- * cmIfCommand starts an if block
- */
+/// Starts an if block
 class cmIfCommand : public cmCommand
 {
 public:
@@ -72,12 +63,12 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "if";}
+  virtual const char* GetName() const { return "if";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "Conditionally execute a group of commands.";
     }
@@ -85,12 +76,12 @@ public:
   /**
    * This determines if the command is invoked when in script mode.
    */
-  virtual bool IsScriptable() { return true; }
+  virtual bool IsScriptable() const { return true; }
 
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  if(expression)\n"
@@ -125,10 +116,14 @@ public:
       "True if the constant is 1, ON, YES, TRUE, Y, or a non-zero number.  "
       "False if the constant is 0, OFF, NO, FALSE, N, IGNORE, \"\", "
       "or ends in the suffix '-NOTFOUND'.  "
-      "Named boolean constants are case-insensitive."
+      "Named boolean constants are case-insensitive.  "
+      "If the argument is not one of these constants, "
+      "it is treated as a variable:"
       "\n"
       "  if(<variable>)\n"
-      "True if the variable's value is not a false constant."
+      "True if the variable is defined to a value that is not a false "
+      "constant.  False otherwise.  "
+      "(Note macro arguments are not variables.)"
       "\n"
       "  if(NOT <expression>)\n"
       "True if the expression is not true."
@@ -163,32 +158,25 @@ public:
       "Behavior is well-defined only for full paths.\n"
       "  if(IS_ABSOLUTE path)\n"
       "True if the given path is an absolute path.\n"
-      "  if(variable MATCHES regex)\n"
-      "  if(string MATCHES regex)\n"
+      "  if(<variable|string> MATCHES regex)\n"
       "True if the given string or variable's value matches the given "
       "regular expression.\n"
-      "  if(variable LESS number)\n"
-      "  if(string LESS number)\n"
-      "  if(variable GREATER number)\n"
-      "  if(string GREATER number)\n"
-      "  if(variable EQUAL number)\n"
-      "  if(string EQUAL number)\n"
+      "  if(<variable|string> LESS <variable|string>)\n"
+      "  if(<variable|string> GREATER <variable|string>)\n"
+      "  if(<variable|string> EQUAL <variable|string>)\n"
       "True if the given string or variable's value is a valid number and "
       "the inequality or equality is true.\n"
-      "  if(variable STRLESS string)\n"
-      "  if(string STRLESS string)\n"
-      "  if(variable STRGREATER string)\n"
-      "  if(string STRGREATER string)\n"
-      "  if(variable STREQUAL string)\n"
-      "  if(string STREQUAL string)\n"
+      "  if(<variable|string> STRLESS <variable|string>)\n"
+      "  if(<variable|string> STRGREATER <variable|string>)\n"
+      "  if(<variable|string> STREQUAL <variable|string>)\n"
       "True if the given string or variable's value is lexicographically "
       "less (or greater, or equal) than the string or variable on the right.\n"
-      "  if(version1 VERSION_LESS version2)\n"
-      "  if(version1 VERSION_EQUAL version2)\n"
-      "  if(version1 VERSION_GREATER version2)\n"
+      "  if(<variable|string> VERSION_LESS <variable|string>)\n"
+      "  if(<variable|string> VERSION_EQUAL <variable|string>)\n"
+      "  if(<variable|string> VERSION_GREATER <variable|string>)\n"
       "Component-wise integer version number comparison (version format is "
       "major[.minor[.patch[.tweak]]]).\n"
-      "  if(DEFINED variable)\n"
+      "  if(DEFINED <variable>)\n"
       "True if the given variable is defined. It does not matter if the "
       "variable is true or false just if it has been set.\n"
       "  if((expression) AND (expression OR (expression)))\n"
@@ -199,38 +187,27 @@ public:
       "that contains them."
       "\n"
 
-      "The if statement was written fairly early in CMake's history "
-      "and it has some convenience features that are worth covering. "
-      "The if statement reduces operations until there is "
-      "a single remaining value, at that point if the case "
-      "insensitive value is: ON, 1, YES, TRUE, Y it returns true, if "
-      "it is OFF, 0, NO, FALSE, N, NOTFOUND, *-NOTFOUND, IGNORE it "
-      "will return false. \n"
-
-      "This is fairly reasonable. The convenience feature that sometimes "
-      "throws new authors is how CMake handles values that do not "
-      "match the true or false list. Those values are treated as "
-      "variables and are dereferenced even though they do not have "
-      "the required ${} syntax. This means that if you write\n"
-
-      "  if (boobah)\n"
-
-      "CMake will treat it as if you wrote \n"
-
-      "  if (${boobah})\n"
-
-      "likewise if you write \n"
-
-      "  if (fubar AND sol)\n"
-
-      "CMake will conveniently treat it as \n"
-
-      "  if (\"${fubar}\" AND \"${sol}\")\n"
-
-      "The later is really the correct way to write it, but the "
-      "former will work as well. Only some operations in the if "
-      "statement have this special handling of arguments. The "
-      "specific details follow: \n"
+      "The if command was written very early in CMake's history, predating "
+      "the ${} variable evaluation syntax, and for convenience evaluates "
+      "variables named by its arguments as shown in the above signatures.  "
+      "Note that normal variable evaluation with ${} applies before the "
+      "if command even receives the arguments.  "
+      "Therefore code like\n"
+      "  set(var1 OFF)\n"
+      "  set(var2 \"var1\")\n"
+      "  if(${var2})\n"
+      "appears to the if command as\n"
+      "  if(var1)\n"
+      "and is evaluated according to the if(<variable>) case "
+      "documented above.  "
+      "The result is OFF which is false.  "
+      "However, if we remove the ${} from the example then the command sees\n"
+      "  if(var2)\n"
+      "which is true because var2 is defined to \"var1\" which is not "
+      "a false constant."
+      "\n"
+      "Automatic evaluation applies in the other cases whenever the "
+      "above-documented signature accepts <variable|string>:\n"
 
       "1) The left hand argument to MATCHES is first checked to see "
       "if it is a defined variable, if so the variable's value is "

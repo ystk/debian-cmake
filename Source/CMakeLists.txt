@@ -112,6 +112,7 @@ ENDIF(CMAKE_USE_ELF_PARSER)
 #
 SET(SRCS
   cmStandardIncludes.cxx
+  cmArchiveWrite.cxx
   cmBootstrapCommands.cxx
   cmCacheManager.cxx
   cmCacheManager.h
@@ -128,8 +129,12 @@ SET(SRCS
   cmComputeLinkInformation.h
   cmComputeTargetDepends.h
   cmComputeTargetDepends.cxx
+  cmCryptoHash.cxx
+  cmCryptoHash.h
   cmCustomCommand.cxx
   cmCustomCommand.h
+  cmCustomCommandGenerator.cxx
+  cmCustomCommandGenerator.h
   cmDefinitions.cxx
   cmDefinitions.h
   cmDepends.cxx
@@ -155,6 +160,9 @@ SET(SRCS
   cmDocumentationFormatterText.cxx
   cmDocumentationFormatterUsage.cxx
   cmDocumentationSection.cxx
+  cmDocumentCompileDefinitions.h
+  cmDocumentGeneratorExpressions.h
+  cmDocumentLocationUndefined.h
   cmDocumentVariables.cxx
   cmDynamicLoader.cxx
   cmDynamicLoader.h
@@ -177,11 +185,15 @@ SET(SRCS
   cmGeneratedFileStream.cxx
   cmGeneratorExpression.cxx
   cmGeneratorExpression.h
+  cmGeneratorTarget.cxx
+  cmGeneratorTarget.h
   cmGlobalGenerator.cxx
   cmGlobalGenerator.h
   cmGlobalUnixMakefileGenerator3.cxx
   cmGlobalUnixMakefileGenerator3.h
   cmGraphAdjacencyList.h
+  cmGraphVizWriter.cxx
+  cmGraphVizWriter.h
   cmInstallGenerator.h
   cmInstallGenerator.cxx
   cmInstallExportGenerator.cxx
@@ -207,6 +219,10 @@ SET(SRCS
   cmMakefileExecutableTargetGenerator.cxx
   cmMakefileLibraryTargetGenerator.cxx
   cmMakefileUtilityTargetGenerator.cxx
+  cmOSXBundleGenerator.cxx
+  cmOSXBundleGenerator.h
+  cmNewLineStyle.h
+  cmNewLineStyle.cxx
   cmOrderDirectories.cxx
   cmOrderDirectories.h
   cmPolicies.h
@@ -221,6 +237,8 @@ SET(SRCS
   cmPropertyDefinitionMap.h
   cmPropertyMap.cxx
   cmPropertyMap.h
+  cmQtAutomoc.cxx
+  cmQtAutomoc.h
   cmScriptGenerator.h
   cmScriptGenerator.cxx
   cmSourceFile.cxx
@@ -250,6 +268,8 @@ SET(SRCS
   cmakewizard.cxx
   cmakewizard.h
 
+  cm_sha2.h
+  cm_sha2.c
   cm_utf8.h
   cm_utf8.c
   )
@@ -259,7 +279,7 @@ IF(UNIX)
   SET(SRCS ${SRCS} cmGlobalKdevelopGenerator.cxx)
 ENDIF(UNIX)
 
-# XCode only works on apple
+# Xcode only works on Apple
 IF(APPLE)
   SET(SRCS ${SRCS}
     cmXCodeObject.cxx
@@ -301,6 +321,8 @@ IF (WIN32)
       cmGlobalVisualStudio8Win64Generator.h
       cmGlobalVisualStudio9Win64Generator.cxx
       cmGlobalVisualStudio9Win64Generator.h
+      cmGlobalVisualStudio9IA64Generator.cxx
+      cmGlobalVisualStudio9IA64Generator.h
       cmVisualStudioGeneratorOptions.h
       cmVisualStudioGeneratorOptions.cxx
       cmVisualStudio10TargetGenerator.h
@@ -311,6 +333,14 @@ IF (WIN32)
       cmGlobalVisualStudio10Generator.cxx
       cmGlobalVisualStudio10Win64Generator.h
       cmGlobalVisualStudio10Win64Generator.cxx
+      cmGlobalVisualStudio10IA64Generator.h
+      cmGlobalVisualStudio10IA64Generator.cxx
+      cmGlobalVisualStudio11Generator.h
+      cmGlobalVisualStudio11Generator.cxx
+      cmGlobalVisualStudio11Win64Generator.h
+      cmGlobalVisualStudio11Win64Generator.cxx
+      cmGlobalVisualStudio11ARMGenerator.h
+      cmGlobalVisualStudio11ARMGenerator.cxx
       cmGlobalVisualStudioGenerator.cxx
       cmGlobalVisualStudioGenerator.h
       cmGlobalWatcomWMakeGenerator.cxx
@@ -329,14 +359,35 @@ IF (WIN32)
   ENDIF(NOT UNIX)
 ENDIF (WIN32)
 
+# Ninja support
+SET(SRCS ${SRCS}
+  cmGlobalNinjaGenerator.cxx
+  cmGlobalNinjaGenerator.h
+  cmNinjaTypes.h
+  cmLocalNinjaGenerator.cxx
+  cmLocalNinjaGenerator.h
+  cmNinjaTargetGenerator.cxx
+  cmNinjaTargetGenerator.h
+  cmNinjaNormalTargetGenerator.cxx
+  cmNinjaNormalTargetGenerator.h
+  cmNinjaUtilityTargetGenerator.cxx
+  cmNinjaUtilityTargetGenerator.h
+  )
+IF(WIN32 AND NOT CYGWIN AND NOT BORLAND)
+  SET_SOURCE_FILES_PROPERTIES(cmcldeps.cxx PROPERTIES COMPILE_DEFINITIONS _WIN32_WINNT=0x0501)
+  ADD_EXECUTABLE(cmcldeps cmcldeps.cxx)
+  TARGET_LINK_LIBRARIES(cmcldeps CMakeLib)
+  INSTALL_TARGETS(/bin cmcldeps)
+ENDIF()
+
 # create a library used by the command line and the GUI
 ADD_LIBRARY(CMakeLib ${SRCS})
-TARGET_LINK_LIBRARIES(CMakeLib cmsys 
+TARGET_LINK_LIBRARIES(CMakeLib cmsys
   ${CMAKE_EXPAT_LIBRARIES} ${CMAKE_ZLIB_LIBRARIES}
   ${CMAKE_TAR_LIBRARIES} ${CMAKE_COMPRESS_LIBRARIES}
   ${CMAKE_CURL_LIBRARIES} )
 
-# On Apple we need Carbon
+# On Apple we need CoreFoundation
 IF(APPLE)
   TARGET_LINK_LIBRARIES(CMakeLib "-framework CoreFoundation")
 ENDIF(APPLE)
@@ -350,7 +401,7 @@ ENDIF(CMAKE_BUILD_ON_VISUAL_STUDIO OR MINGW)
 # CTestLib
 #
 INCLUDE_DIRECTORIES(
-  "${CMAKE_SOURCE_DIR}/Source/CTest"
+  "${CMake_SOURCE_DIR}/Source/CTest"
   ${CMAKE_XMLRPC_INCLUDES}
   ${CMAKE_CURL_INCLUDES}
   )
@@ -367,6 +418,9 @@ SET(CTEST_SRCS cmCTest.cxx
   CTest/cmCTestConfigureHandler.cxx
   CTest/cmCTestCoverageCommand.cxx
   CTest/cmCTestCoverageHandler.cxx
+  CTest/cmParseMumpsCoverage.cxx
+  CTest/cmParseCacheCoverage.cxx
+  CTest/cmParseGTMCoverage.cxx
   CTest/cmParsePHPCoverage.cxx
   CTest/cmCTestEmptyBinaryDirectoryCommand.cxx
   CTest/cmCTestGenericHandler.cxx
@@ -387,6 +441,8 @@ SET(CTEST_SRCS cmCTest.cxx
   CTest/cmCTestTestHandler.cxx
   CTest/cmCTestUpdateCommand.cxx
   CTest/cmCTestUpdateHandler.cxx
+  CTest/cmCTestUploadCommand.cxx
+  CTest/cmCTestUploadHandler.cxx
 
   CTest/cmCTestVC.cxx
   CTest/cmCTestVC.h
@@ -423,6 +479,8 @@ SET(CPACK_SRCS
   CPack/cmCPackTarBZip2Generator.cxx
   CPack/cmCPackTarCompressGenerator.cxx
   CPack/cmCPackZIPGenerator.cxx
+  CPack/cmCPackDocumentVariables.cxx
+  CPack/cmCPackDocumentMacros.cxx
   )
 
 IF(CYGWIN)
@@ -431,7 +489,7 @@ IF(CYGWIN)
     CPack/cmCPackCygwinSourceGenerator.cxx
     )
 ENDIF(CYGWIN)
-  
+
 IF(UNIX)
   SET(CPACK_SRCS ${CPACK_SRCS}
     CPack/cmCPackDebGenerator.cxx
@@ -458,7 +516,7 @@ IF(APPLE)
   ADD_EXECUTABLE(OSXScriptLauncher
     CPack/OSXScriptLauncher.cxx)
   TARGET_LINK_LIBRARIES(OSXScriptLauncher cmsys)
-  TARGET_LINK_LIBRARIES(OSXScriptLauncher "-framework Carbon")
+  TARGET_LINK_LIBRARIES(OSXScriptLauncher "-framework CoreFoundation")
 ENDIF(APPLE)
 
 # Build CMake executable
@@ -493,8 +551,8 @@ IF(BUILD_QtDialog)
   SUBDIRS(QtDialog)
 ENDIF(BUILD_QtDialog)
 
-INCLUDE (${CMAKE_BINARY_DIR}/Source/LocalUserOptions.cmake OPTIONAL)
-INCLUDE (${CMAKE_SOURCE_DIR}/Source/LocalUserOptions.cmake OPTIONAL)
+INCLUDE (${CMake_BINARY_DIR}/Source/LocalUserOptions.cmake OPTIONAL)
+INCLUDE (${CMake_SOURCE_DIR}/Source/LocalUserOptions.cmake OPTIONAL)
 
 INSTALL_TARGETS(/bin cmake)
 INSTALL_TARGETS(/bin ctest)

@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # Function to compile a source file to identify the compiler ABI.
@@ -24,10 +24,18 @@ FUNCTION(CMAKE_DETERMINE_COMPILER_ABI lang src)
 
     # Compile the ABI identification source.
     SET(BIN "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeDetermineCompilerABI_${lang}.bin")
+    SET(CMAKE_FLAGS )
+    IF(DEFINED CMAKE_${lang}_VERBOSE_FLAG)
+      SET(CMAKE_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_${lang}_VERBOSE_FLAG}")
+    ENDIF()
     TRY_COMPILE(CMAKE_DETERMINE_${lang}_ABI_COMPILED
       ${CMAKE_BINARY_DIR} ${src}
-      CMAKE_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_${lang}_VERBOSE_FLAG}"
+      CMAKE_FLAGS "${CMAKE_FLAGS}"
                   "-DCMAKE_${lang}_STANDARD_LIBRARIES="
+                  # We need ignore these warnings because some platforms need
+                  # CMAKE_${lang}_STANDARD_LIBRARIES to link properly and we
+                  # don't care when we are just determining the ABI.
+                  "--no-warn-unused-cli"
       OUTPUT_VARIABLE OUTPUT
       COPY_FILE "${BIN}"
       )
@@ -49,6 +57,8 @@ FUNCTION(CMAKE_DETERMINE_COMPILER_ABI lang src)
 
       IF(ABI_SIZEOF_DPTR)
         SET(CMAKE_${lang}_SIZEOF_DATA_PTR "${ABI_SIZEOF_DPTR}" PARENT_SCOPE)
+      ELSEIF(CMAKE_${lang}_SIZEOF_DATA_PTR_DEFAULT)
+        SET(CMAKE_${lang}_SIZEOF_DATA_PTR "${CMAKE_${lang}_SIZEOF_DATA_PTR_DEFAULT}" PARENT_SCOPE)
       ENDIF(ABI_SIZEOF_DPTR)
 
       IF(ABI_NAME)
@@ -58,18 +68,59 @@ FUNCTION(CMAKE_DETERMINE_COMPILER_ABI lang src)
       # Parse implicit linker information for this language, if available.
       SET(implicit_dirs "")
       SET(implicit_libs "")
+      SET(MULTI_ARCH FALSE)
+      IF(DEFINED CMAKE_OSX_ARCHITECTURES)
+        IF( "${CMAKE_OSX_ARCHITECTURES}" MATCHES ";" )
+          SET(MULTI_ARCH TRUE)
+        ENDIF()
+      ENDIF()
       IF(CMAKE_${lang}_VERBOSE_FLAG
           # Implicit link information cannot be used explicitly for
           # multiple OS X architectures, so we skip it.
-          AND NOT "${CMAKE_OSX_ARCHITECTURES}" MATCHES ";"
+          AND NOT MULTI_ARCH
           # Skip this with Xcode for now.
           AND NOT "${CMAKE_GENERATOR}" MATCHES Xcode)
-        CMAKE_PARSE_IMPLICIT_LINK_INFO("${OUTPUT}" implicit_libs implicit_dirs log)
+        CMAKE_PARSE_IMPLICIT_LINK_INFO("${OUTPUT}" implicit_libs implicit_dirs log
+          "${CMAKE_${lang}_IMPLICIT_OBJECT_REGEX}")
         FILE(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeOutput.log
           "Parsed ${lang} implicit link information from above output:\n${log}\n\n")
       ENDIF()
+      # for VS IDE Intel Fortran we have to figure out the
+      # implicit link path for the fortran run time using
+      # a try-compile
+      IF("${lang}" MATCHES "Fortran"
+          AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+        SET(_desc "Determine Intel Fortran Compiler Implicit Link Path")
+        MESSAGE(STATUS "${_desc}")
+        # Build a sample project which reports symbols.
+        TRY_COMPILE(IFORT_LIB_PATH_COMPILED
+          ${CMAKE_BINARY_DIR}/CMakeFiles/IntelVSImplicitPath
+          ${CMAKE_ROOT}/Modules/IntelVSImplicitPath
+          IntelFortranImplicit
+          CMAKE_FLAGS
+          "-DCMAKE_Fortran_FLAGS:STRING=${CMAKE_Fortran_FLAGS}"
+          OUTPUT_VARIABLE _output)
+        FILE(WRITE
+          "${CMAKE_BINARY_DIR}/CMakeFiles/IntelVSImplicitPath/output.txt"
+          "${_output}")
+        INCLUDE(${CMAKE_BINARY_DIR}/CMakeFiles/IntelVSImplicitPath/output.cmake OPTIONAL)
+        SET(_desc "Determine Intel Fortran Compiler Implicit Link Path -- done")
+        MESSAGE(STATUS "${_desc}")
+      ENDIF()
+
       SET(CMAKE_${lang}_IMPLICIT_LINK_LIBRARIES "${implicit_libs}" PARENT_SCOPE)
       SET(CMAKE_${lang}_IMPLICIT_LINK_DIRECTORIES "${implicit_dirs}" PARENT_SCOPE)
+
+      # Detect library architecture directory name.
+      IF(CMAKE_LIBRARY_ARCHITECTURE_REGEX)
+        FOREACH(dir ${implicit_dirs})
+          IF("${dir}" MATCHES "/lib/${CMAKE_LIBRARY_ARCHITECTURE_REGEX}$")
+            GET_FILENAME_COMPONENT(arch "${dir}" NAME)
+            SET(CMAKE_${lang}_LIBRARY_ARCHITECTURE "${arch}" PARENT_SCOPE)
+            BREAK()
+          ENDIF()
+        ENDFOREACH()
+      ENDIF()
 
     ELSE(CMAKE_DETERMINE_${lang}_ABI_COMPILED)
       MESSAGE(STATUS "Detecting ${lang} compiler ABI info - failed")

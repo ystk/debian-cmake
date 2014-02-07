@@ -14,17 +14,19 @@
 
 #include "cmMakefileTargetGenerator.h"
 
-class cmMakefileLibraryTargetGenerator: 
+class cmMakefileLibraryTargetGenerator:
   public cmMakefileTargetGenerator
 {
 public:
   cmMakefileLibraryTargetGenerator(cmTarget* target);
+  virtual ~cmMakefileLibraryTargetGenerator();
 
   /* the main entry point for this class. Writes the Makefiles associated
      with this target */
-  virtual void WriteRuleFiles();  
-  
+  virtual void WriteRuleFiles();
+
 protected:
+  void WriteObjectLibraryRules();
   void WriteStaticLibraryRules();
   void WriteSharedLibraryRules(bool relink);
   void WriteModuleLibraryRules(bool relink);
@@ -32,7 +34,6 @@ protected:
                          bool relink);
   // MacOSX Framework support methods
   void WriteFrameworkRules(bool relink);
-  void CreateFramework(std::string const& targetName);
 
   // Store the computd framework version for OS X Frameworks.
   std::string FrameworkVersion;

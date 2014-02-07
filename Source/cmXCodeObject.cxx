@@ -12,6 +12,8 @@
 #include "cmXCodeObject.h"
 #include "cmSystemTools.h"
 
+#include <CoreFoundation/CoreFoundation.h> // CFUUIDCreate
+
 //----------------------------------------------------------------------------
 const char* cmXCodeObject::PBXTypeNames[] = {
     "PBXGroup", "PBXBuildStyle", "PBXProject", "PBXHeadersBuildPhase", 
@@ -39,35 +41,35 @@ cmXCodeObject::cmXCodeObject(PBXType ptype, Type type)
   this->PBXTargetDependencyValue = 0;
   this->Target = 0;
   this->Object =0;
-  
+
   this->IsA = ptype;
+
   if(type == OBJECT)
     {
-    cmOStringStream str;
-    str << (void*)this;
-    str << (void*)this;
-    str << (void*)this;
-    this->Id = str.str();
+    // Set the Id of an Xcode object to a unique string for each instance.
+    // However the Xcode user file references certain Ids: for those cases,
+    // override the generated Id using SetId().
+    //
+    char cUuid[40] = {0};
+    CFUUIDRef uuid = CFUUIDCreate(kCFAllocatorDefault);
+    CFStringRef s = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+    CFStringGetCString(s, cUuid, sizeof(cUuid), kCFStringEncodingUTF8);
+    this->Id = cUuid;
+    CFRelease(s);
+    CFRelease(uuid);
     }
   else
     {
-    this->Id = 
-      "Temporary cmake object, should not be refered to in xcode file";
+    this->Id =
+      "Temporary cmake object, should not be referred to in Xcode file";
     }
-  cmSystemTools::ReplaceString(this->Id, "0x", "");
-  this->Id = cmSystemTools::UpperCase(this->Id);
-  if(this->Id.size() < 24)
-    {
-    int diff = 24 - this->Id.size();
-    for(int i =0; i < diff; ++i)
-      {
-      this->Id += "0";
-      }
-    }
+
+  cmSystemTools::ReplaceString(this->Id, "-", "");
   if(this->Id.size() > 24)
     {
-    this->Id = this->Id.substr(0,24);
+    this->Id = this->Id.substr(0, 24);
     }
+
   this->TypeValue = type;
   if(this->TypeValue == OBJECT)
     {
@@ -146,13 +148,15 @@ void cmXCodeObject::Print(std::ostream& out)
 
         if(j->second->TypeValue == STRING)
           {
-          out << j->first << " = ";
+          cmXCodeObject::PrintString(out,j->first);
+          out << " = ";
           j->second->PrintString(out);
           out << ";";
           }
         else if(j->second->TypeValue == OBJECT_LIST)
           {
-          out << j->first << " = (";
+          cmXCodeObject::PrintString(out,j->first);
+          out << " = (";
           for(unsigned int k = 0; k < j->second->List.size(); k++)
             {
             if(j->second->List[k]->TypeValue == STRING)
@@ -169,7 +173,8 @@ void cmXCodeObject::Print(std::ostream& out)
           }
         else
           {
-          out << j->first << " = error_unexpected_TypeValue_" <<
+          cmXCodeObject::PrintString(out,j->first);
+          out << " = error_unexpected_TypeValue_" <<
             j->second->TypeValue << ";";
           }
 
@@ -180,7 +185,8 @@ void cmXCodeObject::Print(std::ostream& out)
       }
     else if(object->TypeValue == OBJECT_REF)
       {
-      out << i->first << " = " << object->Object->Id;
+      cmXCodeObject::PrintString(out,i->first);
+      out << " = " << object->Object->Id;
       if(object->Object->HasComment() && i->first != "remoteGlobalIDString")
         {
         out << " ";
@@ -190,7 +196,8 @@ void cmXCodeObject::Print(std::ostream& out)
       }
     else if(object->TypeValue == STRING)
       {
-      out << i->first << " = ";
+      cmXCodeObject::PrintString(out,i->first);
+      out << " = ";
       object->PrintString(out);
       out << ";" << separator;
       }
@@ -230,19 +237,19 @@ void cmXCodeObject::CopyAttributes(cmXCodeObject* copy)
 }
 
 //----------------------------------------------------------------------------
-void cmXCodeObject::PrintString(std::ostream& os) const
+void cmXCodeObject::PrintString(std::ostream& os,cmStdString String)
 {
   // The string needs to be quoted if it contains any characters
   // considered special by the Xcode project file parser.
   bool needQuote =
-    (this->String.empty() ||
-     this->String.find_first_of(" <>.+-=@") != this->String.npos);
+    (String.empty() ||
+     String.find_first_of(" <>.+-=@$[],") != String.npos);
   const char* quote = needQuote? "\"" : "";
 
   // Print the string, quoted and escaped as necessary.
   os << quote;
-  for(std::string::const_iterator i = this->String.begin();
-      i != this->String.end(); ++i)
+  for(std::string::const_iterator i = String.begin();
+      i != String.end(); ++i)
     {
     if(*i == '"')
       {
@@ -252,6 +259,11 @@ void cmXCodeObject::PrintString(std::ostream& os) const
     os << *i;
     }
   os << quote;
+}
+
+void cmXCodeObject::PrintString(std::ostream& os) const
+{
+  cmXCodeObject::PrintString(os,this->String);
 }
 
 //----------------------------------------------------------------------------

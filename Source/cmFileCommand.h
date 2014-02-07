@@ -41,17 +41,17 @@ public:
   /**
    * This determines if the command is invoked when in script mode.
    */
-  virtual bool IsScriptable() { return true; }
+  virtual bool IsScriptable() const { return true; }
 
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "file";}
+  virtual const char* GetName() const { return "file";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation()
+  virtual const char* GetTerseDocumentation() const
     {
     return "File manipulation command.";
     }
@@ -59,12 +59,13 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  file(WRITE filename \"message to write\"... )\n"
       "  file(APPEND filename \"message to write\"... )\n"
       "  file(READ filename variable [LIMIT numBytes] [OFFSET offset] [HEX])\n"
+      "  file(<MD5|SHA1|SHA224|SHA256|SHA384|SHA512> filename variable)\n"
       "  file(STRINGS filename variable [LIMIT_COUNT num]\n"
       "       [LIMIT_INPUT numBytes] [LIMIT_OUTPUT numBytes]\n"
       "       [LENGTH_MINIMUM numBytes] [LENGTH_MAXIMUM numBytes]\n"
@@ -80,8 +81,11 @@ public:
       "  file(RELATIVE_PATH variable directory file)\n"
       "  file(TO_CMAKE_PATH path result)\n"
       "  file(TO_NATIVE_PATH path result)\n"
-      "  file(DOWNLOAD url file [TIMEOUT timeout] [STATUS status] [LOG log]\n"
-      "       [EXPECTED_MD5 sum] [SHOW_PROGRESS])\n"
+      "  file(DOWNLOAD url file [INACTIVITY_TIMEOUT timeout]\n"
+      "       [TIMEOUT timeout] [STATUS status] [LOG log] [SHOW_PROGRESS]\n"
+      "       [EXPECTED_MD5 sum])\n"
+      "  file(UPLOAD filename url [INACTIVITY_TIMEOUT timeout]\n"
+      "       [TIMEOUT timeout] [STATUS status] [LOG log] [SHOW_PROGRESS])\n"
       "WRITE will write a message into a file called 'filename'. It "
       "overwrites the file if it already exists, and creates the file "
       "if it does not exist.\n"
@@ -91,6 +95,8 @@ public:
       "variable. It will start at the given offset and read up to numBytes. "
       "If the argument HEX is given, the binary data will be converted to "
       "hexadecimal representation and this will be stored in the variable.\n"
+      "MD5, SHA1, SHA224, SHA256, SHA384, and SHA512 "
+      "will compute a cryptographic hash of the content of a file.\n"
       "STRINGS will parse a list of ASCII strings from a file and "
       "store it in a variable. Binary data in the file are ignored. Carriage "
       "return (CR) characters are ignored. It works also for Intel Hex and "
@@ -116,7 +122,12 @@ public:
       "expressions and store it into the variable. Globbing expressions "
       "are similar to regular expressions, but much simpler. If RELATIVE "
       "flag is specified for an expression, the results will be returned "
-      "as a relative path to the given path.\n"
+      "as a relative path to the given path.  "
+      "(We do not recommend using GLOB to collect a list of source files "
+      "from your source tree.  If no CMakeLists.txt file changes when a "
+      "source is added or removed then the generated build system cannot "
+      "know when to ask CMake to regenerate.)"
+      "\n"
       "Examples of globbing expressions include:\n"
       "   *.cxx      - match all files with extension cxx\n"
       "   *.vt?      - match all files with extension vta,...,vtz\n"
@@ -141,7 +152,8 @@ public:
       "TO_CMAKE_PATH will convert path into a cmake style path with unix /. "
       " The input can be a single path or a system path like \"$ENV{PATH}\". "
       " Note the double quotes around the ENV call TO_CMAKE_PATH only takes "
-      " one argument.\n"
+      " one argument. This command will also convert the native list"
+      " delimiters for a list of paths like the PATH environment variable.\n"
       "TO_NATIVE_PATH works just like TO_CMAKE_PATH, but will convert from "
       " a cmake style path into the native path style \\ for windows and / "
       "for UNIX.\n"
@@ -154,9 +166,25 @@ public:
       "numeric error means no error in the operation. "
       "If TIMEOUT time is specified, the operation will "
       "timeout after time seconds, time should be specified as an integer. "
+      "The INACTIVITY_TIMEOUT specifies an integer number of seconds of "
+      "inactivity after which the operation should terminate. "
       "If EXPECTED_MD5 sum is specified, the operation will verify that the "
       "downloaded file's actual md5 sum matches the expected value. If it "
       "does not match, the operation fails with an error. "
+      "If SHOW_PROGRESS is specified, progress information will be printed "
+      "as status messages until the operation is complete."
+      "\n"
+      "UPLOAD will upload the given file to the given URL. "
+      "If LOG var is specified a log of the upload will be put in var. "
+      "If STATUS var is specified the status of the operation will"
+      " be put in var. The status is returned in a list of length 2. "
+      "The first element is the numeric return value for the operation, "
+      "and the second element is a string value for the error. A 0 "
+      "numeric error means no error in the operation. "
+      "If TIMEOUT time is specified, the operation will "
+      "timeout after time seconds, time should be specified as an integer. "
+      "The INACTIVITY_TIMEOUT specifies an integer number of seconds of "
+      "inactivity after which the operation should terminate. "
       "If SHOW_PROGRESS is specified, progress information will be printed "
       "as status messages until the operation is complete."
       "\n"
@@ -203,6 +231,7 @@ protected:
   bool HandleRemove(std::vector<std::string> const& args, bool recurse);
   bool HandleWriteCommand(std::vector<std::string> const& args, bool append);
   bool HandleReadCommand(std::vector<std::string> const& args);
+  bool HandleHashCommand(std::vector<std::string> const& args);
   bool HandleStringsCommand(std::vector<std::string> const& args);
   bool HandleGlobCommand(std::vector<std::string> const& args, bool recurse);
   bool HandleMakeDirectoryCommand(std::vector<std::string> const& args);
@@ -218,6 +247,7 @@ protected:
   bool HandleCopyCommand(std::vector<std::string> const& args);
   bool HandleInstallCommand(std::vector<std::string> const& args);
   bool HandleDownloadCommand(std::vector<std::string> const& args);
+  bool HandleUploadCommand(std::vector<std::string> const& args);
 };
 
 

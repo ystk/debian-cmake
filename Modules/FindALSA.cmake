@@ -8,11 +8,12 @@
 #
 #     ALSA_INCLUDE_DIR - where to find asoundlib.h, etc.
 #     ALSA_LIBRARY     - the asound library
+#     ALSA_VERSION_STRING - the version of alsa found (since CMake 2.8.8)
 #
 
 #=============================================================================
-# Copyright 2009 Kitware, Inc.
-# Copyright 2009 Philip Lowman <philip@yhbt.com>
+# Copyright 2009-2011 Kitware, Inc.
+# Copyright 2009-2011 Philip Lowman <philip@yhbt.com>
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -21,11 +22,10 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
-find_path(ALSA_INCLUDE_DIR NAMES asoundlib.h
-          PATH_SUFFIXES alsa
+find_path(ALSA_INCLUDE_DIR NAMES alsa/asoundlib.h
           DOC "The ALSA (asound) include directory"
 )
 
@@ -33,10 +33,19 @@ find_library(ALSA_LIBRARY NAMES asound
           DOC "The ALSA (asound) library"
 )
 
+if(ALSA_INCLUDE_DIR AND EXISTS "${ALSA_INCLUDE_DIR}/alsa/version.h")
+  file(STRINGS "${ALSA_INCLUDE_DIR}/alsa/version.h" alsa_version_str REGEX "^#define[\t ]+SND_LIB_VERSION_STR[\t ]+\".*\"")
+
+  string(REGEX REPLACE "^.*SND_LIB_VERSION_STR[\t ]+\"([^\"]*)\".*$" "\\1" ALSA_VERSION_STRING "${alsa_version_str}")
+  unset(alsa_version_str)
+endif()
+
 # handle the QUIETLY and REQUIRED arguments and set ALSA_FOUND to TRUE if 
 # all listed variables are TRUE
-include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(ALSA DEFAULT_MSG ALSA_LIBRARY ALSA_INCLUDE_DIR)
+include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(ALSA
+                                  REQUIRED_VARS ALSA_LIBRARY ALSA_INCLUDE_DIR
+                                  VERSION_VAR ALSA_VERSION_STRING)
 
 if(ALSA_FOUND)
   set( ALSA_LIBRARIES ${ALSA_LIBRARY} )

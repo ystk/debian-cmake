@@ -15,8 +15,8 @@ const char* cmPolicies::PolicyStatusNames[] = {
 
 class cmPolicy
 {
-public:  
-  cmPolicy(cmPolicies::PolicyID iD, 
+public:
+  cmPolicy(cmPolicies::PolicyID iD,
             const char *idString,
             const char *shortDescription,
             const char *longDescription,
@@ -55,7 +55,7 @@ public:
     return v.str();
   }
 
-  bool IsPolicyNewerThan(unsigned int majorV, 
+  bool IsPolicyNewerThan(unsigned int majorV,
                          unsigned int minorV,
                          unsigned int patchV,
                          unsigned int tweakV)
@@ -86,7 +86,7 @@ public:
     }
     return (tweakV < this->TweakVersionIntroduced);
   }
-  
+
   cmPolicies::PolicyID ID;
   std::string IDString;
   std::string ShortDescription;
@@ -285,12 +285,12 @@ cmPolicies::cmPolicies()
     "The NEW behavior for this policy is to produce an error if a bundle "
     "target is installed without a BUNDLE DESTINATION.",
     2,6,0,0, cmPolicies::WARN);
-  
+
   this->DefinePolicy(
     CMP0007, "CMP0007",
     "list command no longer ignores empty elements.",
     "This policy determines whether the list command will "
-    "ignore empty elements in the list. " 
+    "ignore empty elements in the list. "
     "CMake 2.4 and below list commands ignored all empty elements"
     " in the list.  For example, a;b;;c would have length 3 and not 4. "
     "The OLD behavior for this policy is to ignore empty list elements. "
@@ -426,7 +426,7 @@ cmPolicies::cmPolicies()
     this->DefinePolicy(
     CMP0015, "CMP0015",
     "link_directories() treats paths relative to the source dir.",
-    "In CMake 2.6.4 and lower the link_directories() command passed relative "
+    "In CMake 2.8.0 and lower the link_directories() command passed relative "
     "paths unchanged to the linker.  "
     "In CMake 2.8.1 and above the link_directories() command prefers to "
     "interpret relative paths with respect to CMAKE_CURRENT_SOURCE_DIR, "
@@ -437,12 +437,66 @@ cmPolicies::cmPolicies()
     "absolute paths by appending the relative path to "
     "CMAKE_CURRENT_SOURCE_DIR.",
     2,8,1,0, cmPolicies::WARN);
+
+    this->DefinePolicy(
+    CMP0016, "CMP0016",
+    "target_link_libraries() reports error if only argument is not a target.",
+    "In CMake 2.8.2 and lower the target_link_libraries() command silently "
+    "ignored if it was called with only one argument, and this argument "
+    "wasn't a valid target. "
+    "In CMake 2.8.3 and above it reports an error in this case.",
+    2,8,3,0, cmPolicies::WARN);
+
+    this->DefinePolicy(
+    CMP0017, "CMP0017",
+    "Prefer files from the CMake module directory when including from there.",
+    "Starting with CMake 2.8.4, if a cmake-module shipped with CMake (i.e. "
+    "located in the CMake module directory) calls include() or "
+    "find_package(), the files located in the the CMake module directory are "
+    "preferred over the files in CMAKE_MODULE_PATH.  "
+    "This makes sure that the modules belonging to "
+    "CMake always get those files included which they expect, and against "
+    "which they were developed and tested.  "
+    "In call other cases, the files found in "
+    "CMAKE_MODULE_PATH still take precedence over the ones in "
+    "the CMake module directory.  "
+    "The OLD behaviour is to always prefer files from CMAKE_MODULE_PATH over "
+    "files from the CMake modules directory.",
+    2,8,4,0, cmPolicies::WARN);
+
+    this->DefinePolicy(
+    CMP0018, "CMP0018",
+    "Ignore CMAKE_SHARED_LIBRARY_<Lang>_FLAGS variable.",
+    "CMake 2.8.8 and lower compiled sources in SHARED and MODULE libraries "
+    "using the value of the undocumented CMAKE_SHARED_LIBRARY_<Lang>_FLAGS "
+    "platform variable.  The variable contained platform-specific flags "
+    "needed to compile objects for shared libraries.  Typically it included "
+    "a flag such as -fPIC for position independent code but also included "
+    "other flags needed on certain platforms.  CMake 2.8.9 and higher "
+    "prefer instead to use the POSITION_INDEPENDENT_CODE target property to "
+    "determine what targets should be position independent, and new "
+    "undocumented platform variables to select flags while ignoring "
+    "CMAKE_SHARED_LIBRARY_<Lang>_FLAGS completely."
+    "\n"
+    "The default for either approach produces identical compilation flags, "
+    "but if a project modifies CMAKE_SHARED_LIBRARY_<Lang>_FLAGS from its "
+    "original value this policy determines which approach to use."
+    "\n"
+    "The OLD behavior for this policy is to ignore the "
+    "POSITION_INDEPENDENT_CODE property for all targets and use the modified "
+    "value of CMAKE_SHARED_LIBRARY_<Lang>_FLAGS for SHARED and MODULE "
+    "libraries."
+    "\n"
+    "The NEW behavior for this policy is to ignore "
+    "CMAKE_SHARED_LIBRARY_<Lang>_FLAGS whether it is modified or not and "
+    "honor the POSITION_INDEPENDENT_CODE target property.",
+    2,8,9,0, cmPolicies::WARN);
 }
 
 cmPolicies::~cmPolicies()
 {
   // free the policies
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i
     = this->Policies.begin();
   for (;i != this->Policies.end(); ++i)
   {
@@ -451,7 +505,7 @@ cmPolicies::~cmPolicies()
 }
 
 void cmPolicies::DefinePolicy(cmPolicies::PolicyID iD,
-                              const char *idString, 
+                              const char *idString,
                               const char *shortDescription,
                               const char *longDescription,
                               unsigned int majorVersionIntroduced,
@@ -467,7 +521,7 @@ void cmPolicies::DefinePolicy(cmPolicies::PolicyID iD,
       "ID ", this->GetPolicyIDString(iD).c_str());
     return;
   }
-  
+
   this->Policies[iD] = new cmPolicy(iD, idString,
                                     shortDescription,
                                     longDescription,
@@ -480,15 +534,15 @@ void cmPolicies::DefinePolicy(cmPolicies::PolicyID iD,
 }
 
 //----------------------------------------------------------------------------
-bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf, 
+bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf,
                                     const char *version)
 {
   std::string ver = "2.4.0";
 
   if (version && strlen(version) > 0)
-  {
+    {
     ver = version;
-  }
+    }
 
   unsigned int majorVer = 2;
   unsigned int minorVer = 0;
@@ -505,7 +559,7 @@ bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf,
     mf->IssueMessage(cmake::FATAL_ERROR, e.str());
     return false;
     }
-  
+
   // it is an error if the policy version is less than 2.4
   if (majorVer < 2 || (majorVer == 2 && minorVer < 4))
     {
@@ -547,29 +601,33 @@ bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf,
 
   // now loop over all the policies and set them as appropriate
   std::vector<cmPolicies::PolicyID> ancientPolicies;
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i 
-    = this->Policies.begin();
-  for (;i != this->Policies.end(); ++i)
-  {
-  if (i->second->IsPolicyNewerThan(majorVer,minorVer,patchVer,tweakVer))
+  for(std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i
+                     = this->Policies.begin(); i != this->Policies.end(); ++i)
     {
+    if (i->second->IsPolicyNewerThan(majorVer,minorVer,patchVer,tweakVer))
+      {
       if(i->second->Status == cmPolicies::REQUIRED_ALWAYS)
-      {
+        {
         ancientPolicies.push_back(i->first);
+        }
+      else
+        {
+        cmPolicies::PolicyStatus status = cmPolicies::WARN;
+        if(!this->GetPolicyDefault(mf, i->second->IDString, &status) ||
+           !mf->SetPolicy(i->second->ID, status))
+          {
+          return false;
+          }
+        }
       }
-      else if (!mf->SetPolicy(i->second->ID, cmPolicies::WARN))
-      {
-        return false;
-      }
-    }
     else
-    {
-      if (!mf->SetPolicy(i->second->ID, cmPolicies::NEW))
       {
+      if (!mf->SetPolicy(i->second->ID, cmPolicies::NEW))
+        {
         return false;
+        }
       }
     }
-  }
 
   // Make sure the project does not use any ancient policies.
   if(!ancientPolicies.empty())
@@ -583,13 +641,43 @@ bool cmPolicies::ApplyPolicyVersion(cmMakefile *mf,
   return true;
 }
 
+//----------------------------------------------------------------------------
+bool cmPolicies::GetPolicyDefault(cmMakefile* mf, std::string const& policy,
+                                  cmPolicies::PolicyStatus* defaultSetting)
+{
+  std::string defaultVar = "CMAKE_POLICY_DEFAULT_" + policy;
+  std::string defaultValue = mf->GetSafeDefinition(defaultVar.c_str());
+  if(defaultValue == "NEW")
+    {
+    *defaultSetting = cmPolicies::NEW;
+    }
+  else if(defaultValue == "OLD")
+    {
+    *defaultSetting = cmPolicies::OLD;
+    }
+  else if(defaultValue == "")
+    {
+    *defaultSetting = cmPolicies::WARN;
+    }
+  else
+    {
+    cmOStringStream e;
+    e << defaultVar << " has value \"" << defaultValue
+      << "\" but must be \"OLD\", \"NEW\", or \"\" (empty).";
+    mf->IssueMessage(cmake::FATAL_ERROR, e.str().c_str());
+    return false;
+    }
+
+  return true;
+}
+
 bool cmPolicies::GetPolicyID(const char *id, cmPolicies::PolicyID &pid)
 {
   if (!id || strlen(id) < 1)
   {
     return false;
   }
-  std::map<std::string,cmPolicies::PolicyID>::iterator pos = 
+  std::map<std::string,cmPolicies::PolicyID>::iterator pos =
     this->PolicyStringMap.find(id);
   if (pos == this->PolicyStringMap.end())
   {
@@ -601,7 +689,7 @@ bool cmPolicies::GetPolicyID(const char *id, cmPolicies::PolicyID &pid)
 
 std::string cmPolicies::GetPolicyIDString(cmPolicies::PolicyID pid)
 {
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos = 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos =
     this->Policies.find(pid);
   if (pos == this->Policies.end())
   {
@@ -614,7 +702,7 @@ std::string cmPolicies::GetPolicyIDString(cmPolicies::PolicyID pid)
 ///! return a warning string for a given policy
 std::string cmPolicies::GetPolicyWarning(cmPolicies::PolicyID id)
 {
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos = 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos =
     this->Policies.find(id);
   if (pos == this->Policies.end())
   {
@@ -633,12 +721,12 @@ std::string cmPolicies::GetPolicyWarning(cmPolicies::PolicyID id)
     "and suppress this warning.";
   return msg.str();
 }
-  
-  
+
+
 ///! return an error string for when a required policy is unspecified
 std::string cmPolicies::GetRequiredPolicyError(cmPolicies::PolicyID id)
 {
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos = 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos =
     this->Policies.find(id);
   if (pos == this->Policies.end())
   {
@@ -664,25 +752,25 @@ std::string cmPolicies::GetRequiredPolicyError(cmPolicies::PolicyID id)
 }
 
 ///! Get the default status for a policy
-cmPolicies::PolicyStatus 
+cmPolicies::PolicyStatus
 cmPolicies::GetPolicyStatus(cmPolicies::PolicyID id)
 {
   // if the policy is not know then what?
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos = 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator pos =
     this->Policies.find(id);
   if (pos == this->Policies.end())
   {
     // TODO is this right?
     return cmPolicies::WARN;
   }
-  
+
   return pos->second->Status;
 }
 
 void cmPolicies::GetDocumentation(std::vector<cmDocumentationEntry>& v)
 {
   // now loop over all the policies and set them as appropriate
-  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i 
+  std::map<cmPolicies::PolicyID,cmPolicy *>::iterator i
     = this->Policies.begin();
   for (;i != this->Policies.end(); ++i)
   {

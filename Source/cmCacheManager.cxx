@@ -13,6 +13,7 @@
 #include "cmCacheManager.h"
 #include "cmSystemTools.h"
 #include "cmCacheManager.h"
+#include "cmGeneratedFileStream.h"
 #include "cmMakefile.h"
 #include "cmake.h"
 #include "cmVersion.h"
@@ -93,14 +94,14 @@ bool cmCacheManager::LoadCache(const char* path,
   return this->LoadCache(path, internal, emptySet, emptySet);
 }
 
-bool cmCacheManager::ParseEntry(const char* entry,
-                                std::string& var,
-                                std::string& value)
+static bool ParseEntryWithoutType(const char* entry,
+                                  std::string& var,
+                                  std::string& value)
 {
-  // input line is:         key:type=value
+  // input line is:         key=value
   static cmsys::RegularExpression reg(
-    "^([^:]*)=(.*[^\r\t ]|[\r\t ]*)[\r\t ]*$");
-  // input line is:         "key":type=value
+    "^([^=]*)=(.*[^\r\t ]|[\r\t ]*)[\r\t ]*$");
+  // input line is:         "key"=value
   static cmsys::RegularExpression regQuoted(
     "^\"([^\"]*)\"=(.*[^\r\t ]|[\r\t ]*)[\r\t ]*$");
   bool flag = false;
@@ -167,6 +168,11 @@ bool cmCacheManager::ParseEntry(const char* entry,
     {
     value = value.substr(1,
                          value.size() - 2);
+    }
+
+  if (!flag)
+    {
+    return ParseEntryWithoutType(entry, var, value);
     }
 
   return flag;
@@ -336,7 +342,7 @@ bool cmCacheManager::LoadCache(const char* path,
         std::string("The current CMakeCache.txt directory ") +
         currentcwd + std::string(" is different than the directory ") +
         std::string(this->GetCacheValue("CMAKE_CACHEFILE_DIR")) +
-        std::string(" where CMackeCache.txt was created. This may result "
+        std::string(" where CMakeCache.txt was created. This may result "
                     "in binaries being created in the wrong place. If you "
                     "are not sure, reedit the CMakeCache.txt");
       cmSystemTools::Error(message.c_str());
@@ -426,9 +432,8 @@ bool cmCacheManager::SaveCache(const char* path)
 {
   std::string cacheFile = path;
   cacheFile += "/CMakeCache.txt";
-  std::string tempFile = cacheFile;
-  tempFile += ".tmp";
-  std::ofstream fout(tempFile.c_str());
+  cmGeneratedFileStream fout(cacheFile.c_str());
+  fout.SetCopyIfDifferent(true);
   if(!fout)
     {
     cmSystemTools::Error("Unable to open cache file for save. ",
@@ -556,10 +561,7 @@ bool cmCacheManager::SaveCache(const char* path)
       }
     }
   fout << "\n";
-  fout.close();
-  cmSystemTools::CopyFileIfDifferent(tempFile.c_str(),
-                                     cacheFile.c_str());
-  cmSystemTools::RemoveFile(tempFile.c_str());
+  fout.Close();
   std::string checkCacheFile = path;
   checkCacheFile += cmake::GetCMakeFilesDirectory();
   cmSystemTools::MakeDirectory(checkCacheFile.c_str());
@@ -844,7 +846,8 @@ void cmCacheManager::CacheEntry::SetProperty(const char* prop,
 
 //----------------------------------------------------------------------------
 void cmCacheManager::CacheEntry::AppendProperty(const char* prop,
-                                                const char* value)
+                                                const char* value,
+                                                bool asString)
 {
   if(strcmp(prop, "TYPE") == 0)
     {
@@ -854,7 +857,7 @@ void cmCacheManager::CacheEntry::AppendProperty(const char* prop,
     {
     if(value)
       {
-      if(!this->Value.empty() && *value)
+      if(!this->Value.empty() && *value && !asString)
         {
         this->Value += ";";
         }
@@ -863,7 +866,7 @@ void cmCacheManager::CacheEntry::AppendProperty(const char* prop,
     }
   else
     {
-    this->Properties.AppendProperty(prop, value, cmProperty::CACHE);
+    this->Properties.AppendProperty(prop, value, cmProperty::CACHE, asString);
     }
 }
 
@@ -888,11 +891,12 @@ void cmCacheManager::CacheIterator::SetProperty(const char* p, const char* v)
 
 //----------------------------------------------------------------------------
 void cmCacheManager::CacheIterator::AppendProperty(const char* p,
-                                                   const char* v)
+                                                   const char* v,
+                                                   bool asString)
 {
   if(!this->IsAtEnd())
     {
-    this->GetEntry().AppendProperty(p, v);
+    this->GetEntry().AppendProperty(p, v, asString);
     }
 }
 
