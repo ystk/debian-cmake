@@ -13,11 +13,17 @@
   
 cmFindBase::cmFindBase()
 {
-  cmSystemTools::ReplaceString(this->GenericDocumentationPathsOrder,
-                               "FIND_ARGS_XXX", "<VAR> NAMES name");
   this->AlreadyInCache = false;
   this->AlreadyInCacheWithoutMetaInfo = false;
-  this->GenericDocumentation = 
+}
+
+//----------------------------------------------------------------------------
+void cmFindBase::GenerateDocumentation()
+{
+  this->cmFindCommon::GenerateDocumentation();
+  cmSystemTools::ReplaceString(this->GenericDocumentationPathsOrder,
+                               "FIND_ARGS_XXX", "<VAR> NAMES name");
+  this->GenericDocumentation =
     "   FIND_XXX(<VAR> name1 [path1 path2 ...])\n"
     "This is the short-hand signature for the command that "
     "is sufficient in many cases.  It is the same "
@@ -66,12 +72,14 @@ cmFindBase::cmFindBase()
     "1. Search paths specified in cmake-specific cache variables.  "
     "These are intended to be used on the command line with a -DVAR=value.  "
     "This can be skipped if NO_CMAKE_PATH is passed.\n"
+    "XXX_EXTRA_PREFIX_ENTRY"
     "   <prefix>/XXX_SUBDIR for each <prefix> in CMAKE_PREFIX_PATH\n"
     "   CMAKE_XXX_PATH\n"
     "   CMAKE_XXX_MAC_PATH\n"
     "2. Search paths specified in cmake-specific environment variables.  "
     "These are intended to be set in the user's shell configuration.  "
     "This can be skipped if NO_CMAKE_ENVIRONMENT_PATH is passed.\n"
+    "XXX_EXTRA_PREFIX_ENTRY"
     "   <prefix>/XXX_SUBDIR for each <prefix> in CMAKE_PREFIX_PATH\n"
     "   CMAKE_XXX_PATH\n"
     "   CMAKE_XXX_MAC_PATH\n"
@@ -86,6 +94,7 @@ cmFindBase::cmFindBase()
     "5. Search cmake variables defined in the Platform files "
     "for the current system.  This can be skipped if NO_CMAKE_SYSTEM_PATH "
     "is passed.\n"
+    "XXX_EXTRA_PREFIX_ENTRY"
     "   <prefix>/XXX_SUBDIR for each <prefix> in CMAKE_SYSTEM_PREFIX_PATH\n"
     "   CMAKE_SYSTEM_XXX_PATH\n"
     "   CMAKE_SYSTEM_XXX_MAC_PATH\n"
@@ -97,7 +106,18 @@ cmFindBase::cmFindBase()
   this->GenericDocumentation += this->GenericDocumentationRootPath;
   this->GenericDocumentation += this->GenericDocumentationPathsOrder;
 }
-  
+
+//----------------------------------------------------------------------------
+const char* cmFindBase::GetFullDocumentation() const
+{
+  if(this->GenericDocumentation.empty())
+    {
+    const_cast<cmFindBase *>(this)->GenerateDocumentation();
+    }
+  return this->GenericDocumentation.c_str();
+}
+
+//----------------------------------------------------------------------------
 bool cmFindBase::ParseArguments(std::vector<std::string> const& argsIn)
 {
   if(argsIn.size() < 2 )
@@ -146,6 +166,11 @@ bool cmFindBase::ParseArguments(std::vector<std::string> const& argsIn)
           }
         }
       }
+    }
+  if(args.size() < 2 )
+    {
+    this->SetError("called with incorrect number of arguments");
+    return false;
     }
   this->VariableName = args[0];
   if(this->CheckForVariableInCache())
@@ -269,11 +294,12 @@ bool cmFindBase::ParseArguments(std::vector<std::string> const& argsIn)
     }
   this->ExpandPaths();
 
-  // Handle search root stuff.
-  this->RerootPaths(this->SearchPaths);
+  // Filter out ignored paths from the prefix list
+  std::set<std::string> ignored;
+  this->GetIgnoredPaths(ignored);
+  this->FilterPaths(this->SearchPaths, ignored);
 
-  // Add a trailing slash to all prefixes to aid the search process.
-  this->AddTrailingSlashes(this->SearchPaths);
+  this->ComputeFinalPaths();
 
   return true;
 }
@@ -318,6 +344,15 @@ void cmFindBase::AddPrefixPaths(std::vector<std::string> const& in_paths,
     if(!subdir.empty() && !dir.empty() && dir[dir.size()-1] != '/')
       {
       dir += "/";
+      }
+    if(subdir == "lib")
+      {
+      const char* arch =
+        this->Makefile->GetDefinition("CMAKE_LIBRARY_ARCHITECTURE");
+      if(arch && *arch)
+        {
+        this->AddPathInternal(dir+"lib/"+arch, pathType);
+        }
       }
     std::string add = dir + subdir;
     if(add != "/")

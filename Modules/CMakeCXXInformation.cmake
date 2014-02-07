@@ -1,6 +1,6 @@
 
 #=============================================================================
-# Copyright 2004-2009 Kitware, Inc.
+# Copyright 2004-2011 Kitware, Inc.
 #
 # Distributed under the OSI-approved BSD License (the "License");
 # see accompanying file Copyright.txt for details.
@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This file sets the basic flags for the C++ language in CMake.
@@ -25,6 +25,8 @@ IF(UNIX)
 ELSE(UNIX)
   SET(CMAKE_CXX_OUTPUT_EXTENSION .obj)
 ENDIF(UNIX)
+
+SET(_INCLUDED_FILE 0)
 
 # Load compiler-specific information.
 IF(CMAKE_CXX_COMPILER_ID)
@@ -65,6 +67,12 @@ IF (NOT _INCLUDED_FILE)
   INCLUDE(Platform/${CMAKE_SYSTEM_NAME} OPTIONAL)
 ENDIF (NOT _INCLUDED_FILE)
 
+IF(CMAKE_CXX_SIZEOF_DATA_PTR)
+  FOREACH(f ${CMAKE_CXX_ABI_FILES})
+    INCLUDE(${f})
+  ENDFOREACH()
+  UNSET(CMAKE_CXX_ABI_FILES)
+ENDIF()
 
 # This should be included before the _INIT variables are
 # used to initialize the cache.  Since the rule variables 
@@ -73,26 +81,36 @@ ENDIF (NOT _INCLUDED_FILE)
 # be made to those values.
 
 IF(CMAKE_USER_MAKE_RULES_OVERRIDE)
-   INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE})
-ENDIF(CMAKE_USER_MAKE_RULES_OVERRIDE)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE "${_override}")
+ENDIF()
 
 IF(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX)
-   INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE_CXX})
-ENDIF(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX)
+  # Save the full path of the file so try_compile can use it.
+  INCLUDE(${CMAKE_USER_MAKE_RULES_OVERRIDE_CXX} RESULT_VARIABLE _override)
+  SET(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX "${_override}")
+ENDIF()
 
 
-# for most systems a module is the same as a shared library
-# so unless the variable CMAKE_MODULE_EXISTS is set just
-# copy the values from the LIBRARY variables
-IF(NOT CMAKE_MODULE_EXISTS)
-  SET(CMAKE_SHARED_MODULE_CXX_FLAGS ${CMAKE_SHARED_LIBRARY_CXX_FLAGS})
-ENDIF(NOT CMAKE_MODULE_EXISTS)
 # Create a set of shared library variable specific to C++
 # For 90% of the systems, these are the same flags as the C versions
 # so if these are not set just copy the flags from the c version
 IF(NOT CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS)
   SET(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS ${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS})
 ENDIF(NOT CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS)
+
+IF(NOT CMAKE_CXX_COMPILE_OPTIONS_PIC)
+  SET(CMAKE_CXX_COMPILE_OPTIONS_PIC ${CMAKE_C_COMPILE_OPTIONS_PIC})
+ENDIF(NOT CMAKE_CXX_COMPILE_OPTIONS_PIC)
+
+IF(NOT CMAKE_CXX_COMPILE_OPTIONS_PIE)
+  SET(CMAKE_CXX_COMPILE_OPTIONS_PIE ${CMAKE_C_COMPILE_OPTIONS_PIE})
+ENDIF(NOT CMAKE_CXX_COMPILE_OPTIONS_PIE)
+
+IF(NOT CMAKE_CXX_COMPILE_OPTIONS_DLL)
+  SET(CMAKE_CXX_COMPILE_OPTIONS_DLL ${CMAKE_C_COMPILE_OPTIONS_DLL})
+ENDIF(NOT CMAKE_CXX_COMPILE_OPTIONS_DLL)
 
 IF(NOT CMAKE_SHARED_LIBRARY_CXX_FLAGS)
   SET(CMAKE_SHARED_LIBRARY_CXX_FLAGS ${CMAKE_SHARED_LIBRARY_C_FLAGS})
@@ -145,6 +163,14 @@ ENDIF(NOT CMAKE_INCLUDE_FLAG_CXX)
 IF(NOT CMAKE_INCLUDE_FLAG_SEP_CXX)
   SET(CMAKE_INCLUDE_FLAG_SEP_CXX ${CMAKE_INCLUDE_FLAG_SEP_C})
 ENDIF(NOT CMAKE_INCLUDE_FLAG_SEP_CXX)
+
+# for most systems a module is the same as a shared library
+# so unless the variable CMAKE_MODULE_EXISTS is set just
+# copy the values from the LIBRARY variables
+IF(NOT CMAKE_MODULE_EXISTS)
+  SET(CMAKE_SHARED_MODULE_CXX_FLAGS ${CMAKE_SHARED_LIBRARY_CXX_FLAGS})
+  SET(CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS ${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS})
+ENDIF(NOT CMAKE_MODULE_EXISTS)
 
 # repeat for modules
 IF(NOT CMAKE_SHARED_MODULE_CREATE_CXX_FLAGS)
@@ -228,7 +254,7 @@ INCLUDE(CMakeCommonLanguageInclude)
 # create a shared C++ library
 IF(NOT CMAKE_CXX_CREATE_SHARED_LIBRARY)
   SET(CMAKE_CXX_CREATE_SHARED_LIBRARY
-      "<CMAKE_CXX_COMPILER> <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> <CMAKE_SHARED_LIBRARY_SONAME_CXX_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
+      "<CMAKE_CXX_COMPILER> <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LANGUAGE_COMPILE_FLAGS> <LINK_FLAGS> <CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS> <SONAME_FLAG><TARGET_SONAME> -o <TARGET> <OBJECTS> <LINK_LIBRARIES>")
 ENDIF(NOT CMAKE_CXX_CREATE_SHARED_LIBRARY)
 
 # create a c++ shared module copy the shared library rule by default
@@ -239,9 +265,15 @@ ENDIF(NOT CMAKE_CXX_CREATE_SHARED_MODULE)
 
 # Create a static archive incrementally for large object file counts.
 # If CMAKE_CXX_CREATE_STATIC_LIBRARY is set it will override these.
-SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> r  <TARGET> <LINK_FLAGS> <OBJECTS>")
-SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+IF(NOT DEFINED CMAKE_CXX_ARCHIVE_CREATE)
+  SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_CXX_ARCHIVE_APPEND)
+  SET(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> r  <TARGET> <LINK_FLAGS> <OBJECTS>")
+ENDIF()
+IF(NOT DEFINED CMAKE_CXX_ARCHIVE_FINISH)
+  SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+ENDIF()
 
 # compile a C++ file into an object file
 IF(NOT CMAKE_CXX_COMPILE_OBJECT)

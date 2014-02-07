@@ -27,10 +27,15 @@ public:
   virtual ~cmCTestGIT();
 
 private:
+  unsigned int CurrentGitVersion;
+  unsigned int GetGitVersion();
   std::string GetWorkingRevision();
   virtual void NoteOldRevision();
   virtual void NoteNewRevision();
   virtual bool UpdateImpl();
+
+  std::string FindGitDir();
+  std::string FindTopDir();
 
   bool UpdateByFetchAndReset();
   bool UpdateByCustom(std::string const& custom);

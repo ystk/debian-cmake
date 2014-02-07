@@ -58,7 +58,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 #
@@ -78,7 +78,7 @@ list(APPEND _osg_modules_to_process "osg" "OpenThreads")
 list(REMOVE_DUPLICATES _osg_modules_to_process)
 
 if(OpenSceneGraph_DEBUG)
-    message("[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
+    message(STATUS "[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
         "Components = ${_osg_modules_to_process}")
 endif()
 
@@ -93,7 +93,7 @@ endif()
 # Try to ascertain the version...
 if(OSG_INCLUDE_DIR)
     if(OpenSceneGraph_DEBUG)
-        message("[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
+        message(STATUS "[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
             "Detected OSG_INCLUDE_DIR = ${OSG_INCLUDE_DIR}")
     endif()
     
@@ -127,14 +127,14 @@ if(OSG_INCLUDE_DIR)
         string(REGEX REPLACE ".*#define OPENSCENEGRAPH_PATCH_VERSION[ \t]+([0-9]+).*"
             "\\1" _osg_VERSION_PATCH ${_osg_Version_contents})
     else()
-        message("[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
+        message(WARNING "[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
             "Failed to parse version number, please report this as a bug")
     endif()
 
     set(OPENSCENEGRAPH_VERSION "${_osg_VERSION_MAJOR}.${_osg_VERSION_MINOR}.${_osg_VERSION_PATCH}"
                                 CACHE INTERNAL "The version of OSG which was detected")
     if(OpenSceneGraph_DEBUG)
-        message("[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
+        message(STATUS "[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
             "Detected version ${OPENSCENEGRAPH_VERSION}")
     endif()
 endif()
@@ -165,7 +165,7 @@ endif()
 #
 foreach(_osg_module ${_osg_modules_to_process})
     if(OpenSceneGraph_DEBUG)
-        message("[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
+        message(STATUS "[ FindOpenSceneGraph.cmake:${CMAKE_CURRENT_LIST_LINE} ] "
             "Calling find_package(${_osg_module} ${_osg_required} ${_osg_quiet})")
     endif()
     find_package(${_osg_module} ${_osg_quiet})
@@ -231,7 +231,7 @@ else()
         endif()
     endif()
 
-    include(FindPackageHandleStandardArgs)
+    include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
     FIND_PACKAGE_HANDLE_STANDARD_ARGS(OpenSceneGraph DEFAULT_MSG OPENSCENEGRAPH_LIBRARIES OPENSCENEGRAPH_INCLUDE_DIR)
 endif()
 

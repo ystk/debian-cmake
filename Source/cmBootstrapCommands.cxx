@@ -12,7 +12,7 @@
 // This file is used to compile all the commands
 // that CMake knows about at compile time.
 // This is sort of a boot strapping approach since you would
-// like to have CMake to build CMake.   
+// like to have CMake to build CMake.
 #include "cmCommands.h"
 #include "cmAddCustomCommandCommand.cxx"
 #include "cmAddCustomTargetCommand.cxx"
@@ -32,11 +32,13 @@
 #include "cmCreateTestSourceList.cxx"
 #include "cmDefinePropertyCommand.cxx"
 #include "cmElseCommand.cxx"
+#include "cmEnableLanguageCommand.cxx"
 #include "cmEnableTestingCommand.cxx"
 #include "cmEndForEachCommand.cxx"
 #include "cmEndFunctionCommand.cxx"
 #include "cmEndIfCommand.cxx"
 #include "cmEndMacroCommand.cxx"
+#include "cmEndWhileCommand.cxx"
 #include "cmExecProgramCommand.cxx"
 #include "cmExecuteProcessCommand.cxx"
 #include "cmExternalMakefileProjectGenerator.cxx"
@@ -90,6 +92,7 @@
 #include "cmTryCompileCommand.cxx"
 #include "cmTryRunCommand.cxx"
 #include "cmUnsetCommand.cxx"
+#include "cmWhileCommand.cxx"
 
 void GetBootstrapCommands(std::list<cmCommand*>& commands)
 {
@@ -109,11 +112,13 @@ void GetBootstrapCommands(std::list<cmCommand*>& commands)
   commands.push_back(new cmCreateTestSourceList);
   commands.push_back(new cmDefinePropertyCommand);
   commands.push_back(new cmElseCommand);
-  commands.push_back(new cmEnableTestingCommand);  
+  commands.push_back(new cmEnableLanguageCommand);
+  commands.push_back(new cmEnableTestingCommand);
   commands.push_back(new cmEndForEachCommand);
   commands.push_back(new cmEndFunctionCommand);
   commands.push_back(new cmEndIfCommand);
   commands.push_back(new cmEndMacroCommand);
+  commands.push_back(new cmEndWhileCommand);
   commands.push_back(new cmExecProgramCommand);
   commands.push_back(new cmExecuteProcessCommand);
   commands.push_back(new cmFileCommand);
@@ -162,4 +167,5 @@ void GetBootstrapCommands(std::list<cmCommand*>& commands)
   commands.push_back(new cmTryCompileCommand);
   commands.push_back(new cmTryRunCommand);
   commands.push_back(new cmUnsetCommand);
+  commands.push_back(new cmWhileCommand);
 }

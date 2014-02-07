@@ -17,13 +17,13 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 IF (WIN32)
   FIND_PATH( GLUT_INCLUDE_DIR NAMES GL/glut.h 
     PATHS  ${GLUT_ROOT_PATH}/include )
-  FIND_LIBRARY( GLUT_glut_LIBRARY NAMES glut glut32
+  FIND_LIBRARY( GLUT_glut_LIBRARY NAMES glut glut32 freeglut
     PATHS
     ${OPENGL_LIBRARY_DIR}
     ${GLUT_ROOT_PATH}/Release
@@ -64,25 +64,23 @@ ELSE (WIN32)
   
 ENDIF (WIN32)
 
-SET( GLUT_FOUND "NO" )
-IF(GLUT_INCLUDE_DIR)
-  IF(GLUT_glut_LIBRARY)
-    # Is -lXi and -lXmu required on all platforms that have it?
-    # If not, we need some way to figure out what platform we are on.
-    SET( GLUT_LIBRARIES
-      ${GLUT_glut_LIBRARY}
-      ${GLUT_Xmu_LIBRARY}
-      ${GLUT_Xi_LIBRARY} 
-      ${GLUT_cocoa_LIBRARY}
-      )
-    SET( GLUT_FOUND "YES" )
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(GLUT REQUIRED_VARS GLUT_glut_LIBRARY GLUT_INCLUDE_DIR)
+
+IF (GLUT_FOUND)
+  # Is -lXi and -lXmu required on all platforms that have it?
+  # If not, we need some way to figure out what platform we are on.
+  SET( GLUT_LIBRARIES
+    ${GLUT_glut_LIBRARY}
+    ${GLUT_Xmu_LIBRARY}
+    ${GLUT_Xi_LIBRARY}
+    ${GLUT_cocoa_LIBRARY}
+    )
     
-    #The following deprecated settings are for backwards compatibility with CMake1.4
-    SET (GLUT_LIBRARY ${GLUT_LIBRARIES})
-    SET (GLUT_INCLUDE_PATH ${GLUT_INCLUDE_DIR})
-    
-  ENDIF(GLUT_glut_LIBRARY)
-ENDIF(GLUT_INCLUDE_DIR)
+  #The following deprecated settings are for backwards compatibility with CMake1.4
+  SET (GLUT_LIBRARY ${GLUT_LIBRARIES})
+  SET (GLUT_INCLUDE_PATH ${GLUT_INCLUDE_DIR})
+ENDIF(GLUT_FOUND)
 
 MARK_AS_ADVANCED(
   GLUT_INCLUDE_DIR

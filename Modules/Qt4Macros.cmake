@@ -10,7 +10,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 
@@ -71,12 +71,12 @@ MACRO (QT4_GET_MOC_FLAGS _moc_flags)
   GET_DIRECTORY_PROPERTY(_inc_DIRS INCLUDE_DIRECTORIES)
 
   FOREACH(_current ${_inc_DIRS})
-    IF("${_current}" MATCHES ".framework/?$")
-      STRING(REGEX REPLACE "/[^/]+.framework" "" framework_path "${_current}")
+    IF("${_current}" MATCHES "\\.framework/?$")
+      STRING(REGEX REPLACE "/[^/]+\\.framework" "" framework_path "${_current}")
       SET(${_moc_flags} ${${_moc_flags}} "-F${framework_path}")
-    ELSE("${_current}" MATCHES ".framework/?$")
+    ELSE("${_current}" MATCHES "\\.framework/?$")
       SET(${_moc_flags} ${${_moc_flags}} "-I${_current}")
-    ENDIF("${_current}" MATCHES ".framework/?$")
+    ENDIF("${_current}" MATCHES "\\.framework/?$")
   ENDFOREACH(_current ${_inc_DIRS})
 
   GET_DIRECTORY_PROPERTY(_defines COMPILE_DEFINITIONS)
@@ -107,10 +107,8 @@ MACRO (QT4_CREATE_MOC_COMMAND infile outfile moc_flags moc_options)
     ENDIF(_moc_outfile_dir)
     SET (_moc_parameters_file ${outfile}_parameters)
     SET (_moc_parameters ${moc_flags} ${moc_options} -o "${outfile}" "${infile}")
-    FILE (REMOVE ${_moc_parameters_file})
-    FOREACH(arg ${_moc_parameters})
-      FILE (APPEND ${_moc_parameters_file} "${arg}\n")
-    ENDFOREACH(arg)
+    STRING (REPLACE ";" "\n" _moc_parameters "${_moc_parameters}")
+    FILE (WRITE ${_moc_parameters_file} "${_moc_parameters}")
     ADD_CUSTOM_COMMAND(OUTPUT ${outfile}
                        COMMAND ${QT_MOC_EXECUTABLE} @${_moc_outfile_name}_parameters
                        DEPENDS ${infile}
@@ -120,7 +118,7 @@ MACRO (QT4_CREATE_MOC_COMMAND infile outfile moc_flags moc_options)
     ADD_CUSTOM_COMMAND(OUTPUT ${outfile}
                        COMMAND ${QT_MOC_EXECUTABLE}
                        ARGS ${moc_flags} ${moc_options} -o ${outfile} ${infile}
-                       DEPENDS ${infile})
+                       DEPENDS ${infile} VERBATIM)
   ENDIF (WIN32)
 ENDMACRO (QT4_CREATE_MOC_COMMAND)
 
@@ -129,7 +127,11 @@ MACRO (QT4_GENERATE_MOC infile outfile )
 # get include dirs and flags
    QT4_GET_MOC_FLAGS(moc_flags)
    GET_FILENAME_COMPONENT(abs_infile ${infile} ABSOLUTE)
-   QT4_CREATE_MOC_COMMAND(${abs_infile} ${outfile} "${moc_flags}" "")
+   SET(_outfile "${outfile}")
+   IF(NOT IS_ABSOLUTE "${outfile}")
+     SET(_outfile "${CMAKE_CURRENT_BINARY_DIR}/${outfile}")
+   ENDIF(NOT IS_ABSOLUTE "${outfile}")
+   QT4_CREATE_MOC_COMMAND(${abs_infile} ${_outfile} "${moc_flags}" "")
    SET_SOURCE_FILES_PROPERTIES(${outfile} PROPERTIES SKIP_AUTOMOC TRUE)  # dont run automoc on this file
 ENDMACRO (QT4_GENERATE_MOC)
 
@@ -163,7 +165,7 @@ MACRO (QT4_WRAP_UI outfiles )
     ADD_CUSTOM_COMMAND(OUTPUT ${outfile}
       COMMAND ${QT_UIC_EXECUTABLE}
       ARGS ${ui_options} -o ${outfile} ${infile}
-      MAIN_DEPENDENCY ${infile})
+      MAIN_DEPENDENCY ${infile} VERBATIM)
     SET(${outfiles} ${${outfiles}} ${outfile})
   ENDFOREACH (it)
 
@@ -180,24 +182,36 @@ MACRO (QT4_ADD_RESOURCES outfiles )
     GET_FILENAME_COMPONENT(infile ${it} ABSOLUTE)
     GET_FILENAME_COMPONENT(rc_path ${infile} PATH)
     SET(outfile ${CMAKE_CURRENT_BINARY_DIR}/qrc_${outfilename}.cxx)
-    #  parse file for dependencies 
-    #  all files are absolute paths or relative to the location of the qrc file
-    FILE(READ "${infile}" _RC_FILE_CONTENTS)
-    STRING(REGEX MATCHALL "<file[^<]+" _RC_FILES "${_RC_FILE_CONTENTS}")
+
     SET(_RC_DEPENDS)
-    FOREACH(_RC_FILE ${_RC_FILES})
-      STRING(REGEX REPLACE "^<file[^>]*>" "" _RC_FILE "${_RC_FILE}")
-      STRING(REGEX MATCH "^/|([A-Za-z]:/)" _ABS_PATH_INDICATOR "${_RC_FILE}")
-      IF(NOT _ABS_PATH_INDICATOR)
-        SET(_RC_FILE "${rc_path}/${_RC_FILE}")
-      ENDIF(NOT _ABS_PATH_INDICATOR)
-      SET(_RC_DEPENDS ${_RC_DEPENDS} "${_RC_FILE}")
-    ENDFOREACH(_RC_FILE)
+    IF(EXISTS "${infile}")
+      #  parse file for dependencies
+      #  all files are absolute paths or relative to the location of the qrc file
+      FILE(READ "${infile}" _RC_FILE_CONTENTS)
+      STRING(REGEX MATCHALL "<file[^<]+" _RC_FILES "${_RC_FILE_CONTENTS}")
+      FOREACH(_RC_FILE ${_RC_FILES})
+        STRING(REGEX REPLACE "^<file[^>]*>" "" _RC_FILE "${_RC_FILE}")
+        IF(NOT IS_ABSOLUTE "${_RC_FILE}")
+          SET(_RC_FILE "${rc_path}/${_RC_FILE}")
+        ENDIF(NOT IS_ABSOLUTE "${_RC_FILE}")
+        SET(_RC_DEPENDS ${_RC_DEPENDS} "${_RC_FILE}")
+      ENDFOREACH(_RC_FILE)
+      # Since this cmake macro is doing the dependency scanning for these files,
+      # let's make a configured file and add it as a dependency so cmake is run
+      # again when dependencies need to be recomputed.
+      QT4_MAKE_OUTPUT_FILE("${infile}" "" "qrc.depends" out_depends)
+      CONFIGURE_FILE("${infile}" "${out_depends}" COPY_ONLY)
+    ELSE(EXISTS "${infile}")
+      # The .qrc file does not exist (yet). Let's add a dependency and hope
+      # that it will be generated later
+      SET(out_depends)
+    ENDIF(EXISTS "${infile}")
+
     ADD_CUSTOM_COMMAND(OUTPUT ${outfile}
       COMMAND ${QT_RCC_EXECUTABLE}
       ARGS ${rcc_options} -name ${outfilename} -o ${outfile} ${infile}
       MAIN_DEPENDENCY ${infile}
-      DEPENDS ${_RC_DEPENDS})
+      DEPENDS ${_RC_DEPENDS} "${out_depends}" VERBATIM)
     SET(${outfiles} ${${outfiles}} ${outfile})
   ENDFOREACH (it)
 
@@ -206,24 +220,37 @@ ENDMACRO (QT4_ADD_RESOURCES)
 
 MACRO(QT4_ADD_DBUS_INTERFACE _sources _interface _basename)
   GET_FILENAME_COMPONENT(_infile ${_interface} ABSOLUTE)
-  SET(_header ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.h)
-  SET(_impl   ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.cpp)
-  SET(_moc    ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.moc)
+  SET(_header "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.h")
+  SET(_impl   "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.cpp")
+  SET(_moc    "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.moc")
 
-  # handling more arguments (as in FindQt4.cmake from KDE4) will come soon, then
-  # _params will be used for more than just -m
-  SET(_params -m)
+  GET_SOURCE_FILE_PROPERTY(_nonamespace ${_interface} NO_NAMESPACE)
+  IF(_nonamespace)
+    SET(_params -N -m)
+  ELSE(_nonamespace)
+    SET(_params -m)
+  ENDIF(_nonamespace)
 
-  ADD_CUSTOM_COMMAND(OUTPUT ${_impl} ${_header}
+  GET_SOURCE_FILE_PROPERTY(_classname ${_interface} CLASSNAME)
+  IF(_classname)
+    SET(_params ${_params} -c ${_classname})
+  ENDIF(_classname)
+
+  GET_SOURCE_FILE_PROPERTY(_include ${_interface} INCLUDE)
+  IF(_include)
+    SET(_params ${_params} -i ${_include})
+  ENDIF(_include)
+
+  ADD_CUSTOM_COMMAND(OUTPUT "${_impl}" "${_header}"
       COMMAND ${QT_DBUSXML2CPP_EXECUTABLE} ${_params} -p ${_basename} ${_infile}
-      DEPENDS ${_infile})
+      DEPENDS ${_infile} VERBATIM)
 
-  SET_SOURCE_FILES_PROPERTIES(${_impl} PROPERTIES SKIP_AUTOMOC TRUE)
+  SET_SOURCE_FILES_PROPERTIES("${_impl}" PROPERTIES SKIP_AUTOMOC TRUE)
 
-  QT4_GENERATE_MOC(${_header} ${_moc})
+  QT4_GENERATE_MOC("${_header}" "${_moc}")
 
-  SET(${_sources} ${${_sources}} ${_impl} ${_header} ${_moc})
-  MACRO_ADD_FILE_DEPENDENCIES(${_impl} ${_moc})
+  LIST(APPEND ${_sources} "${_impl}" "${_header}" "${_moc}")
+  MACRO_ADD_FILE_DEPENDENCIES("${_impl}" "${_moc}")
 
 ENDMACRO(QT4_ADD_DBUS_INTERFACE)
 
@@ -231,9 +258,10 @@ ENDMACRO(QT4_ADD_DBUS_INTERFACE)
 MACRO(QT4_ADD_DBUS_INTERFACES _sources)
   FOREACH (_current_FILE ${ARGN})
     GET_FILENAME_COMPONENT(_infile ${_current_FILE} ABSOLUTE)
+    GET_FILENAME_COMPONENT(_basename ${_current_FILE} NAME)
     # get the part before the ".xml" suffix
-    STRING(REGEX REPLACE "(.*[/\\.])?([^\\.]+)\\.xml" "\\2" _basename ${_current_FILE})
     STRING(TOLOWER ${_basename} _basename)
+    STRING(REGEX REPLACE "(.*\\.)?([^\\.]+)\\.xml" "\\2" _basename ${_basename})
     QT4_ADD_DBUS_INTERFACE(${_sources} ${_infile} ${_basename}interface)
   ENDFOREACH (_current_FILE)
 ENDMACRO(QT4_ADD_DBUS_INTERFACES)
@@ -246,14 +274,22 @@ MACRO(QT4_GENERATE_DBUS_INTERFACE _header) # _customName OPTIONS -some -options 
   GET_FILENAME_COMPONENT(_basename ${_header} NAME_WE)
 
   IF (_customName)
-    SET(_target ${CMAKE_CURRENT_BINARY_DIR}/${_customName})
+    if (IS_ABSOLUTE ${_customName})
+      get_filename_component(_containingDir ${_customName} PATH)
+      if (NOT EXISTS ${_containingDir})
+        file(MAKE_DIRECTORY "${_containingDir}")
+      endif()
+      SET(_target ${_customName})
+    else()
+      SET(_target ${CMAKE_CURRENT_BINARY_DIR}/${_customName})
+    endif()
   ELSE (_customName)
     SET(_target ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.xml)
   ENDIF (_customName)
 
   ADD_CUSTOM_COMMAND(OUTPUT ${_target}
       COMMAND ${QT_DBUSCPP2XML_EXECUTABLE} ${_qt4_dbus_options} ${_in_file} -o ${_target}
-      DEPENDS ${_in_file}
+      DEPENDS ${_in_file} VERBATIM
   )
 ENDMACRO(QT4_GENERATE_DBUS_INTERFACE)
 
@@ -270,27 +306,27 @@ MACRO(QT4_ADD_DBUS_ADAPTOR _sources _xml_file _include _parentClass) # _optional
   ENDIF (_optionalBasename)
 
   SET(_optionalClassName "${ARGV5}")
-  SET(_header ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.h)
-  SET(_impl   ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.cpp)
-  SET(_moc    ${CMAKE_CURRENT_BINARY_DIR}/${_basename}.moc)
+  SET(_header "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.h")
+  SET(_impl   "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.cpp")
+  SET(_moc    "${CMAKE_CURRENT_BINARY_DIR}/${_basename}.moc")
 
   IF(_optionalClassName)
-    ADD_CUSTOM_COMMAND(OUTPUT ${_impl} ${_header}
+    ADD_CUSTOM_COMMAND(OUTPUT "${_impl}" "${_header}"
        COMMAND ${QT_DBUSXML2CPP_EXECUTABLE} -m -a ${_basename} -c ${_optionalClassName} -i ${_include} -l ${_parentClass} ${_infile}
-       DEPENDS ${_infile}
+       DEPENDS ${_infile} VERBATIM
     )
   ELSE(_optionalClassName)
-    ADD_CUSTOM_COMMAND(OUTPUT ${_impl} ${_header}
+    ADD_CUSTOM_COMMAND(OUTPUT "${_impl}" "${_header}"
        COMMAND ${QT_DBUSXML2CPP_EXECUTABLE} -m -a ${_basename} -i ${_include} -l ${_parentClass} ${_infile}
-       DEPENDS ${_infile}
+       DEPENDS ${_infile} VERBATIM
      )
   ENDIF(_optionalClassName)
 
-  QT4_GENERATE_MOC(${_header} ${_moc})
-  SET_SOURCE_FILES_PROPERTIES(${_impl} PROPERTIES SKIP_AUTOMOC TRUE)
-  MACRO_ADD_FILE_DEPENDENCIES(${_impl} ${_moc})
+  QT4_GENERATE_MOC("${_header}" "${_moc}")
+  SET_SOURCE_FILES_PROPERTIES("${_impl}" PROPERTIES SKIP_AUTOMOC TRUE)
+  MACRO_ADD_FILE_DEPENDENCIES("${_impl}" "${_moc}")
 
-  SET(${_sources} ${${_sources}} ${_impl} ${_header} ${_moc})
+  LIST(APPEND ${_sources} "${_impl}" "${_header}" "${_moc}")
 ENDMACRO(QT4_ADD_DBUS_ADAPTOR)
 
 
@@ -366,12 +402,18 @@ MACRO(QT4_CREATE_TRANSLATION _qm_files)
        FOREACH(_pro_src ${_my_sources})
          SET(_pro_srcs "${_pro_srcs} \"${_pro_src}\"")
        ENDFOREACH(_pro_src ${_my_sources})
-       FILE(WRITE ${_ts_pro} "SOURCES = ${_pro_srcs}")
+       SET(_pro_includes)
+       GET_DIRECTORY_PROPERTY(_inc_DIRS INCLUDE_DIRECTORIES)
+       FOREACH(_pro_include ${_inc_DIRS})
+         GET_FILENAME_COMPONENT(_abs_include "${_pro_include}" ABSOLUTE)
+         SET(_pro_includes "${_pro_includes} \"${_abs_include}\"")
+       ENDFOREACH(_pro_include ${CMAKE_CXX_INCLUDE_PATH})
+       FILE(WRITE ${_ts_pro} "SOURCES = ${_pro_srcs}\nINCLUDEPATH = ${_pro_includes}\n")
      ENDIF(_my_sources)
      ADD_CUSTOM_COMMAND(OUTPUT ${_ts_file}
         COMMAND ${QT_LUPDATE_EXECUTABLE}
         ARGS ${_lupdate_options} ${_ts_pro} ${_my_dirs} -ts ${_ts_file}
-        DEPENDS ${_my_sources} ${_ts_pro})
+        DEPENDS ${_my_sources} ${_ts_pro} VERBATIM)
    ENDFOREACH(_ts_file)
    QT4_ADD_TRANSLATION(${_qm_files} ${_my_tsfiles})
 ENDMACRO(QT4_CREATE_TRANSLATION)
@@ -392,7 +434,7 @@ MACRO(QT4_ADD_TRANSLATION _qm_files)
     ADD_CUSTOM_COMMAND(OUTPUT ${qm}
        COMMAND ${QT_LRELEASE_EXECUTABLE}
        ARGS ${_abs_FILE} -qm ${qm}
-       DEPENDS ${_abs_FILE}
+       DEPENDS ${_abs_FILE} VERBATIM
     )
     SET(${_qm_files} ${${_qm_files}} ${qm})
   ENDFOREACH (_current_FILE)

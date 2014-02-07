@@ -33,13 +33,16 @@ if(CMake_TEST_INSTALL)
   add_test(CMake.Install
     ${CMake_TEST_INSTALL_CTest}
     ${CMake_TEST_INSTALL_CONFIG}
-    --build-and-test ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}
+    --build-and-test ${CMake_SOURCE_DIR} ${CMake_BINARY_DIR}
     --build-generator ${CMAKE_GENERATOR} # Not CMAKE_TEST_GENERATOR
     --build-project CMake
     --build-makeprogram ${CMAKE_MAKE_PROGRAM} # Not CMAKE_TEST_MAKEPROGRAM
     --build-nocmake
     --build-noclean
     --build-target install)
+
+  # Avoid running this test simultaneously with other tests:
+  set_tests_properties(CMake.Install PROPERTIES RUN_SERIAL ON)
 
   # TODO: Make all other tests depend on this one, and then drive them
   # with the installed CTest.

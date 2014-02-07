@@ -84,13 +84,13 @@ void cmTest::SetProperty(const char* prop, const char* value)
 }
 
 //----------------------------------------------------------------------------
-void cmTest::AppendProperty(const char* prop, const char* value)
+void cmTest::AppendProperty(const char* prop, const char* value, bool asString)
 {
   if (!prop)
     {
     return;
     }
-  this->Properties.AppendProperty(prop, value, cmProperty::TEST);
+  this->Properties.AppendProperty(prop, value, cmProperty::TEST, asString);
 }
 
 //----------------------------------------------------------------------------
@@ -196,4 +196,10 @@ void cmTest::DefineProperties(cmake *cm)
      "If set to true, this will invert the pass/fail flag of the test.",
      "This property can be used for tests that are expected to fail and "
      "return a non zero return code.");
+
+  cm->DefineProperty
+    ("WORKING_DIRECTORY", cmProperty::TEST,
+     "The directory from which the test executable will be called.",
+     "If this is not set it is called from the directory the test executable "
+     "is located in.");
 }

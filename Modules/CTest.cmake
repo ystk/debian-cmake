@@ -55,7 +55,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 OPTION(BUILD_TESTING "Build the testing tree." ON)
@@ -63,7 +63,8 @@ OPTION(BUILD_TESTING "Build the testing tree." ON)
 # function to turn generator name into a version string
 # like vs7 vs71 vs8 vs9 
 FUNCTION(GET_VS_VERSION_STRING generator var)
-  STRING(REGEX REPLACE "Visual Studio ([0-9][0-9]?)($|.*)" "\\1" NUMBER "${generator}") 
+  STRING(REGEX REPLACE "Visual Studio ([0-9][0-9]?)($|.*)" "\\1"
+    NUMBER "${generator}")
   IF("${generator}" MATCHES "Visual Studio 7 .NET 2003")
     SET(ver_string "vs71")
   ELSE("${generator}" MATCHES "Visual Studio 7 .NET 2003")
@@ -163,6 +164,11 @@ IF(BUILD_TESTING)
   SET(DART_TESTING_TIMEOUT 1500 CACHE STRING 
     "Maximum time allowed before CTest will kill the test.")
 
+  SET(CTEST_SUBMIT_RETRY_DELAY 5 CACHE STRING
+    "How long to wait between timed-out CTest submissions.")
+  SET(CTEST_SUBMIT_RETRY_COUNT 3 CACHE STRING
+    "How many times to retry timed-out CTest submissions.")
+
   FIND_PROGRAM(MEMORYCHECK_COMMAND
     NAMES purify valgrind boundscheck
     PATHS
@@ -183,6 +189,8 @@ IF(BUILD_TESTING)
   FIND_PROGRAM(COVERAGE_COMMAND gcov DOC 
     "Path to the coverage program that CTest uses for performing coverage inspection"
     )
+  SET(COVERAGE_EXTRA_FLAGS "-l" CACHE STRING
+    "Extra command line flags to pass to the coverage tool")
 
   # set the site name
   SITE_NAME(SITE)
@@ -223,8 +231,10 @@ IF(BUILD_TESTING)
   ENDIF(NOT BUILDNAME)
 
   # the build command
-  BUILD_COMMAND(MAKECOMMAND CONFIGURATION "\${CTEST_CONFIGURATION_TYPE}")
-  SET(MAKECOMMAND ${MAKECOMMAND} CACHE STRING "Command to build the project")
+  BUILD_COMMAND(MAKECOMMAND_DEFAULT_VALUE
+    CONFIGURATION "\${CTEST_CONFIGURATION_TYPE}")
+  SET(MAKECOMMAND ${MAKECOMMAND_DEFAULT_VALUE}
+    CACHE STRING "Command to build the project")
 
   # the default build configuration the ctest build handler will use
   # if there is no -C arg given to ctest:
@@ -246,15 +256,17 @@ IF(BUILD_TESTING)
   ENDIF(CTEST_USE_LAUNCHERS)
 
   MARK_AS_ADVANCED(
-    COVERAGE_COMMAND
-    CVSCOMMAND
-    SVNCOMMAND
     BZRCOMMAND
-    HGCOMMAND
-    GITCOMMAND
-    CVS_UPDATE_OPTIONS
-    SVN_UPDATE_OPTIONS
     BZR_UPDATE_OPTIONS
+    COVERAGE_COMMAND
+    COVERAGE_EXTRA_FLAGS
+    CTEST_SUBMIT_RETRY_DELAY
+    CTEST_SUBMIT_RETRY_COUNT
+    CVSCOMMAND
+    CVS_UPDATE_OPTIONS
+    DART_TESTING_TIMEOUT
+    GITCOMMAND
+    HGCOMMAND
     MAKECOMMAND 
     MEMORYCHECK_COMMAND
     MEMORYCHECK_SUPPRESSIONS_FILE
@@ -262,9 +274,10 @@ IF(BUILD_TESTING)
     SCPCOMMAND
     SLURM_SBATCH_COMMAND
     SLURM_SRUN_COMMAND
-    SITE 
+    SITE
+    SVNCOMMAND
+    SVN_UPDATE_OPTIONS
     )
-  #  BUILDNAME 
   IF(NOT RUN_FROM_DART)
     SET(RUN_FROM_CTEST_OR_DART 1)
     INCLUDE(CTestTargets)

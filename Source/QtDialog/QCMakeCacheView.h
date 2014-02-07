@@ -67,7 +67,9 @@ public:
   enum { HelpRole = Qt::ToolTipRole,
          TypeRole = Qt::UserRole, 
          AdvancedRole,
-         StringsRole};
+         StringsRole,
+         GroupRole
+       };
 
   enum ViewType { FlatView, GroupView };
 
@@ -77,6 +79,9 @@ public slots:
   // list of properties to set will become an old property.  All others will
   // become new properties and be marked red.
   void setProperties(const QCMakePropertyList& props);
+
+  // set whether to show new properties in red
+  void setShowNewProperties(bool);
 
   // clear everything from the model
   void clear();
@@ -115,6 +120,7 @@ public:
 protected:
   bool EditEnabled;
   int NewPropertyCount;
+  bool ShowNewProperties;
   ViewType View;
 
   // set the data in the model for this property

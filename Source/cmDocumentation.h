@@ -21,6 +21,7 @@
 #include "cmDocumentationFormatterText.h"
 #include "cmDocumentationFormatterUsage.h"
 #include "cmDocumentationSection.h"
+#include "cmake.h"
 
 namespace cmsys
 {
@@ -32,21 +33,36 @@ class cmDocumentation: public cmDocumentationEnums
 {
 public:
   cmDocumentation();
-  
+
   ~cmDocumentation();
+
+  /**
+   * An helper type pair for [structured] documented modules.
+   * The comment of those module contains structure markup
+   * which makes it possible to retrieve the documentation
+   * of variables, macros and functions defined in the module.
+   * - first is the filename of the module
+   * - second is the section of the doc the module belongs too
+   */
+  typedef std::pair<std::string,std::string> documentedModuleSectionPair_t;
+  /**
+   * A list of documented module(s).
+   */
+  typedef std::list<documentedModuleSectionPair_t>  documentedModulesList_t;
+
   // High-level interface for standard documents:
-  
+
   /**
    * Check command line arguments for documentation options.  Returns
    * true if documentation options are found, and false otherwise.
    * When true is returned, PrintRequestedDocumentation should be
-   * called.  exitOpt can be used for things like cmake -E, so that 
+   * called.  exitOpt can be used for things like cmake -E, so that
    * all arguments after the -E are ignored and not searched for
    * help arguments.
    */
-  bool CheckOptions(int argc, const char* const* argv, 
+  bool CheckOptions(int argc, const char* const* argv,
                     const char* exitOpt =0);
-  
+
   /**
    * Print help requested on the command line.  Call after
    * CheckOptions returns true.  Returns true on success, and false
@@ -54,12 +70,12 @@ public:
    * command line cannot be written.
    */
   bool PrintRequestedDocumentation(std::ostream& os);
-  
+
   /** Print help of the given type.  */
   bool PrintDocumentation(Type ht, std::ostream& os, const char* docname=0);
 
   void SetShowGenerators(bool showGen) { this->ShowGenerators = showGen; }
-  
+
   /** Set the program name for standard document generation.  */
   void SetName(const char* name);
 
@@ -92,8 +108,8 @@ public:
    * Print documentation in the given form.  All previously added
    * sections will be generated.
    */
-  void Print(Form f, std::ostream& os);
-  
+  void Print(Form f, int manSection, std::ostream& os);
+
   /**
    * Print documentation in the current form.  All previously added
    * sections will be generated.
@@ -109,24 +125,79 @@ public:
   void SetSeeAlsoList(const char *data[][3]);
 
   /** Clear all previously added sections of help.  */
-  void ClearSections();  
-  
+  void ClearSections();
+
   /** Set cmake root so we can find installed files */
   void SetCMakeRoot(const char* root)  { this->CMakeRoot = root;}
 
   /** Set CMAKE_MODULE_PATH so we can find additional cmake modules */
   void SetCMakeModulePath(const char* path)  { this->CMakeModulePath = path;}
-  
-  static Form GetFormFromFilename(const std::string& filename);
 
+  static Form GetFormFromFilename(const std::string& filename,
+                                  int* ManSection);
+
+  /** Add common (to all tools) documentation section(s) */
+  void addCommonStandardDocSections();
+
+  /** Add the CMake standard documentation section(s) */
+  void addCMakeStandardDocSections();
+
+  /** Add the CTest standard documentation section(s) */
+  void addCTestStandardDocSections();
+
+  /** Add the CPack standard documentation section(s) */
+  void addCPackStandardDocSections();
+
+  /** Add automatic variables sections */
+  void addAutomaticVariableSections(const std::string& section);
+
+  /**
+   * Retrieve the list of documented module located in
+   * path which match the globing expression globExpr.
+   * @param[in] path, directory where to start the search
+   *                  we will recurse into it.
+   * @param[in] globExpr, the globing expression used to
+   *                      match the file in path.
+   * @param[out] the list of obtained pairs (may be empty)
+   * @return 0 on success 1 on error or empty list
+   */
+  int getDocumentedModulesListInDir(
+          std::string path,
+          std::string globExpr,
+          documentedModulesList_t& docModuleList);
+
+  /**
+   * Get the documentation of macros, functions and variable documented
+   * with CMake structured documentation in a CMake script.
+   * (in fact it may be in any file which follow the structured doc format)
+   * Structured documentation begin with
+   * ## (double sharp) in column 1 & 2 immediately followed
+   * by a markup. Those ## are ignored by the legacy module
+   * documentation parser @see CreateSingleModule.
+   * Current markup are ##section, ##module,
+   * ##macro, ##function, ##variable and ##end.
+   * ##end is closing either of the previous ones.
+   * @param[in] fname the script file name to be parsed for documentation
+   * @param[in,out] commands the vector of command/macros documentation
+   *                entry found in the script file.
+   * @param[in,out] the cmake object instance to which variable documentation
+   *                will be attached (using @see cmake::DefineProperty)
+   * @param[in] the documentation section in which the property will be
+   *            inserted.
+   * @return the number of documented items (command and variable)
+   *         found in the file.
+   */
+  int GetStructuredDocFromFile(const char* fname,
+                               std::vector<cmDocumentationEntry>& commands,
+                               cmake* cm);
 private:
-  void SetForm(Form f);
+  void SetForm(Form f, int manSection);
   void SetDocName(const char* docname);
 
-  bool CreateSingleModule(const char* fname, 
+  bool CreateSingleModule(const char* fname,
                           const char* moduleName,
                           cmDocumentationSection &sec);
-  void CreateModuleDocsForDir(cmsys::Directory& dir, 
+  void CreateModuleDocsForDir(cmsys::Directory& dir,
                               cmDocumentationSection &moduleSection);
   bool CreateModulesSection();
   bool CreateCustomModulesSection();
@@ -166,7 +237,7 @@ private:
   std::string NameString;
   std::string DocName;
   std::map<std::string,cmDocumentationSection*> AllSections;
-  
+
   std::string SeeAlsoString;
   std::string CMakeRoot;
   std::string CMakeModulePath;
@@ -177,11 +248,12 @@ private:
 
   struct RequestedHelpItem
   {
-    RequestedHelpItem():HelpForm(TextForm), HelpType(None) {}
+    RequestedHelpItem():HelpForm(TextForm), HelpType(None), ManSection(1) {}
     cmDocumentationEnums::Form HelpForm;
     cmDocumentationEnums::Type HelpType;
     std::string Filename;
     std::string Argument;
+    int ManSection;
   };
 
   std::vector<RequestedHelpItem> RequestedHelpItems;

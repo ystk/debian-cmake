@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This file is included in CMakeSystemSpecificInformation.cmake if
@@ -21,3 +21,5 @@ IF(CMAKE_CODEBLOCKS_EXECUTABLE)
    SET(CMAKE_OPEN_PROJECT_COMMAND "${CMAKE_CODEBLOCKS_EXECUTABLE} <PROJECT_FILE>" )
 ENDIF(CMAKE_CODEBLOCKS_EXECUTABLE)
 
+# Determine builtin macros and include dirs:
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/CMakeExtraGeneratorDetermineCompilerMacrosAndIncludeDirs.cmake)

@@ -16,15 +16,15 @@
 
 cmGlobalVisualStudio9Win64Generator::cmGlobalVisualStudio9Win64Generator()
 {
-  this->PlatformName = "x64";
+  this->ArchitectureId = "x64";
 }
 
 ///! Create a local generator appropriate to this Global Generator
 cmLocalGenerator *cmGlobalVisualStudio9Win64Generator::CreateLocalGenerator()
 {
-  cmLocalVisualStudio7Generator *lg = new cmLocalVisualStudio7Generator;
-  lg->SetVersion9();
-  lg->SetPlatformName(this->PlatformName.c_str());
+  cmLocalVisualStudio7Generator *lg =
+    new cmLocalVisualStudio7Generator(cmLocalVisualStudioGenerator::VS9);
+  lg->SetPlatformName(this->GetPlatformName());
   lg->SetExtraFlagTable(this->GetExtraFlagTableVS8());
   lg->SetGlobalGenerator(this);
   return lg;
@@ -45,6 +45,4 @@ void cmGlobalVisualStudio9Win64Generator
 {
   cmGlobalVisualStudio9Generator::AddPlatformDefinitions(mf);
   mf->AddDefinition("CMAKE_FORCE_WIN64", "TRUE");
-  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", "x64");
-  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", "x64");
 }

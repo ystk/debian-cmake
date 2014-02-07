@@ -19,7 +19,7 @@
  *
  * cmTargetLinkLibrariesCommand is used to specify a list of libraries to link
  * into executable(s) or shared objects. The names of the libraries
- * should be those defined by the LIBRARY(library) command(s).  
+ * should be those defined by the LIBRARY(library) command(s).
  */
 class cmTargetLinkLibrariesCommand : public cmCommand
 {
@@ -27,7 +27,7 @@ public:
   /**
    * This is a virtual constructor for the command.
    */
-  virtual cmCommand* Clone() 
+  virtual cmCommand* Clone()
     {
     return new cmTargetLinkLibrariesCommand;
     }
@@ -42,26 +42,31 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() { return "target_link_libraries";}
+  virtual const char* GetName() const { return "target_link_libraries";}
 
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
-    return 
+    return
       "Link a target to given libraries.";
     }
-  
+
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  target_link_libraries(<target> [item1 [item2 [...]]]\n"
       "                        [[debug|optimized|general] <item>] ...)\n"
       "Specify libraries or flags to use when linking a given target.  "
+      "The named <target> must have been created in the current directory "
+      "by a command such as add_executable or add_library.  "
+      "The remaining arguments specify library names or flags.  "
+      "Repeated calls for the same <target> append items in the order called."
+      "\n"
       "If a library name matches that of another target in the project "
       "a dependency will automatically be added in the build system to make "
       "sure the library being linked is up-to-date before the target links.  "
@@ -103,6 +108,18 @@ public:
       "Libraries specified as \"general\" (or without any keyword) are "
       "treated as if specified for both \"debug\" and \"optimized\"."
       "\n"
+      "  target_link_libraries(<target>\n"
+      "                        <LINK_PRIVATE|LINK_PUBLIC>\n"
+      "                          [[debug|optimized|general] <lib>] ...\n"
+      "                        [<LINK_PRIVATE|LINK_PUBLIC>\n"
+      "                          [[debug|optimized|general] <lib>] ...])\n"
+      "The LINK_PUBLIC and LINK_PRIVATE modes can be used to specify both "
+      "the link dependencies and the link interface in one command.  "
+      "Libraries and targets following LINK_PUBLIC are linked to, and are "
+      "made part of the LINK_INTERFACE_LIBRARIES. Libraries and targets "
+      "following LINK_PRIVATE are linked to, but are not made part of the "
+      "LINK_INTERFACE_LIBRARIES.  "
+      "\n"
       "The library dependency graph is normally acyclic (a DAG), but in the "
       "case of mutually-dependent STATIC libraries CMake allows the graph "
       "to contain cycles (strongly connected components).  "
@@ -126,14 +143,21 @@ public:
       ")"
       ;
     }
-  
+
   cmTypeMacro(cmTargetLinkLibrariesCommand, cmCommand);
 private:
   void LinkLibraryTypeSpecifierWarning(int left, int right);
   static const char* LinkLibraryTypeNames[3];
 
   cmTarget* Target;
-  bool DoingInterface;
+  enum ProcessingState {
+    ProcessingLinkLibraries,
+    ProcessingLinkInterface,
+    ProcessingPublicInterface,
+    ProcessingPrivateInterface
+  };
+
+  ProcessingState CurrentProcessingState;
 
   void HandleLibrary(const char* lib, cmTarget::LinkLibraryType llt);
 };

@@ -9,16 +9,27 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This file is used by EnableLanguage in cmGlobalGenerator to
-# determine that that selected ASM compiler can actually compile
-# and link the most basic of programs.   If not, a fatal error
-# is set and cmake stops processing commands and will not generate
-# any makefiles or projects.
+# determine that the selected ASM compiler works.
+# For assembler this can only check whether the compiler has been found,
+# because otherwise there would have to be a separate assembler source file
+# for each assembler on every architecture.
+
+
+SET(_ASM_COMPILER_WORKS 0)
+
 IF(CMAKE_ASM${ASM_DIALECT}_COMPILER)
-  SET(CMAKE_ASM${ASM_DIALECT}_COMPILER_WORKS 1 CACHE INTERNAL "")
-ELSE(CMAKE_ASM${ASM_DIALECT}_COMPILER)
-  SET(CMAKE_ASM${ASM_DIALECT}_COMPILER_WORKS 0 CACHE INTERNAL "")
-ENDIF(CMAKE_ASM${ASM_DIALECT}_COMPILER)
+  SET(_ASM_COMPILER_WORKS 1)
+ENDIF()
+
+# when using generic "ASM" support, we must have detected the compiler ID, fail otherwise:
+IF("ASM${ASM_DIALECT}" STREQUAL "ASM")
+  IF(NOT CMAKE_ASM${ASM_DIALECT}_COMPILER_ID)
+    SET(_ASM_COMPILER_WORKS 0)
+  ENDIF()
+ENDIF()
+
+SET(CMAKE_ASM${ASM_DIALECT}_COMPILER_WORKS ${_ASM_COMPILER_WORKS} CACHE INTERNAL "")

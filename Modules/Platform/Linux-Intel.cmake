@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This module is shared by multiple languages; use include blocker.
@@ -31,6 +31,8 @@ if(NOT XIAR)
 endif(NOT XIAR)
 
 macro(__linux_compiler_intel lang)
+  set(CMAKE_${lang}_COMPILE_OPTIONS_PIC "-fPIC")
+  set(CMAKE_${lang}_COMPILE_OPTIONS_PIE "-fPIE")
   set(CMAKE_SHARED_LIBRARY_${lang}_FLAGS "-fPIC")
   set(CMAKE_SHARED_LIBRARY_CREATE_${lang}_FLAGS "-shared")
 

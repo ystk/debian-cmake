@@ -52,24 +52,34 @@ int cmCPackSTGZGenerator::InitializeInternal()
 }
 
 //----------------------------------------------------------------------
-int cmCPackSTGZGenerator::CompressFiles(const char* outFileName,
-  const char* toplevel, const std::vector<std::string>& files)
+int cmCPackSTGZGenerator::PackageFiles()
 {
-  if ( !this->Superclass::CompressFiles(outFileName, toplevel, files) )
+ bool retval = true;
+  if ( !this->Superclass::PackageFiles() )
     {
     return 0;
     }
-  return cmSystemTools::SetPermissions(outFileName,
+
+  /* TGZ generator (our Superclass) may
+   * have generated several packages (component packaging)
+   * so we must iterate over generated packages.
+   */
+  for (std::vector<std::string>::iterator it=packageFileNames.begin();
+       it != packageFileNames.end(); ++it)
+  {
+    retval &= cmSystemTools::SetPermissions((*it).c_str(),
 #if defined( _MSC_VER ) || defined( __MINGW32__ )
-    S_IREAD | S_IWRITE | S_IEXEC
+      S_IREAD | S_IWRITE | S_IEXEC
 #elif defined( __BORLANDC__ )
-    S_IRUSR | S_IWUSR | S_IXUSR
+      S_IRUSR | S_IWUSR | S_IXUSR
 #else
-    S_IRUSR | S_IWUSR | S_IXUSR |
-    S_IRGRP | S_IWGRP | S_IXGRP |
-    S_IROTH | S_IWOTH | S_IXOTH
+      S_IRUSR | S_IWUSR | S_IXUSR |
+      S_IRGRP | S_IWGRP | S_IXGRP |
+      S_IROTH | S_IWOTH | S_IXOTH
 #endif
-  );
+    );
+  }
+  return retval;
 }
 
 //----------------------------------------------------------------------

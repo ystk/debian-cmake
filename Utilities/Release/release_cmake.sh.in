@@ -89,14 +89,12 @@ if [ ! -z "@GIT_COMMAND@" ]; then
    @GIT_EXTRA@
    check_exit_value $? "git extra cmake source" || exit 1
    # now checkout a copy on the local branch working
-   @GIT_COMMAND@ checkout -b working origin/@GIT_BRANCH@
+   @GIT_COMMAND@ checkout -b working @GIT_BRANCH@
    check_exit_value $? "git checkout" || exit 1
    cd ..
 else
-   # for CVS just run the CMAKE_CHECKOUT command as set
-   # in release_cmake.cmake
-   @CMAKE_CHECKOUT@
-   check_exit_value $? "CVS Checkout cmake source" || exit 1
+   echo GIT_COMMAND does not exist
+   exit 1
 fi
 
 cd @CMAKE_RELEASE_DIRECTORY@/@CMAKE_CREATE_VERSION@-build 

@@ -29,14 +29,17 @@ public:
 protected:
   virtual int InitializeInternal();
   virtual const char* GetOutputExtension();
-  int CompressFiles(const char* outFileName, const char* toplevel,
-    const std::vector<std::string>& files);
+  int PackageFiles();
+  bool SupportsComponentInstallation() const;
+
 
   bool CopyFile(cmOStringStream& source, cmOStringStream& target);
   bool RunCommand(cmOStringStream& command, std::string* output = 0);
 
-  virtual int CreateDMG(const std::string& installdir,
-    const std::string& outdmg);
+  std::string
+  GetComponentInstallDirNameSuffix(const std::string& componentName);
+
+  int CreateDMG(const std::string& src_dir, const std::string& output_file);
 
   std::string InstallPrefix;
 };

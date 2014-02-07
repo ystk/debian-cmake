@@ -21,15 +21,16 @@ cmGlobalVisualStudio8Generator::cmGlobalVisualStudio8Generator()
 {
   this->FindMakeProgramFile = "CMakeVS8FindMake.cmake";
   this->ProjectConfigurationSectionName = "ProjectConfigurationPlatforms";
-  this->PlatformName = "Win32";
+  this->ArchitectureId = "X86";
 }
 
 //----------------------------------------------------------------------------
 ///! Create a local generator appropriate to this Global Generator
 cmLocalGenerator *cmGlobalVisualStudio8Generator::CreateLocalGenerator()
 {
-  cmLocalVisualStudio7Generator *lg = new cmLocalVisualStudio7Generator;
-  lg->SetVersion8();
+  cmLocalVisualStudio7Generator *lg =
+    new cmLocalVisualStudio7Generator(cmLocalVisualStudioGenerator::VS8);
+  lg->SetPlatformName(this->GetPlatformName());
   lg->SetExtraFlagTable(this->GetExtraFlagTableVS8());
   lg->SetGlobalGenerator(this);
   return lg;
@@ -55,8 +56,8 @@ void cmGlobalVisualStudio8Generator
 //----------------------------------------------------------------------------
 void cmGlobalVisualStudio8Generator::AddPlatformDefinitions(cmMakefile* mf)
 {
-  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", "X86");
-  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", "X86");
+  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", this->ArchitectureId);
+  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", this->ArchitectureId);
   mf->AddDefinition("MSVC80", "1");
 }
 
@@ -136,6 +137,13 @@ void cmGlobalVisualStudio8Generator::AddCheckTarget()
                           no_working_directory, no_depends,
                           noCommandLines);
 
+  // Organize in the "predefined targets" folder:
+  //
+  if (this->UseFolderProperty())
+    {
+    tgt->SetProperty("FOLDER", this->GetPredefinedTargetsFolder());
+    }
+
   // Create a list of all stamp files for this project.
   std::vector<std::string> stamps;
   std::string stampList = cmake::GetCMakeFilesDirectoryPostSlash();
@@ -206,13 +214,11 @@ void cmGlobalVisualStudio8Generator::AddCheckTarget()
   // (this could be avoided with per-target source files)
   const char* no_main_dependency = 0;
   const char* no_working_directory = 0;
-  mf->AddCustomCommandToOutput(
-    stamps, listFiles,
-    no_main_dependency, commandLines, "Checking Build System",
-    no_working_directory, true);
-  std::string ruleName = stamps[0];
-  ruleName += ".rule";
-  if(cmSourceFile* file = mf->GetSource(ruleName.c_str()))
+  if(cmSourceFile* file =
+     mf->AddCustomCommandToOutput(
+       stamps, listFiles,
+       no_main_dependency, commandLines, "Checking Build System",
+       no_working_directory, true))
     {
     tgt->AddSourceFile(file);
     }
@@ -252,8 +258,8 @@ cmGlobalVisualStudio8Generator
   for(std::vector<std::string>::iterator i = this->Configurations.begin();
       i != this->Configurations.end(); ++i)
     {
-    fout << "\t\t" << *i << "|" << this->PlatformName << " = " << *i << "|"
-         << this->PlatformName << "\n";
+    fout << "\t\t" << *i << "|" << this->GetPlatformName()
+         << " = "  << *i << "|" << this->GetPlatformName() << "\n";
     }
   fout << "\tEndGlobalSection\n";
 }
@@ -262,21 +268,46 @@ cmGlobalVisualStudio8Generator
 void
 cmGlobalVisualStudio8Generator
 ::WriteProjectConfigurations(std::ostream& fout, const char* name,
-                             bool partOfDefaultBuild)
+                             bool partOfDefaultBuild,
+                             const char* platformMapping)
 {
   std::string guid = this->GetGUID(name);
   for(std::vector<std::string>::iterator i = this->Configurations.begin();
       i != this->Configurations.end(); ++i)
     {
     fout << "\t\t{" << guid << "}." << *i
-         << "|" << this->PlatformName << ".ActiveCfg = "
-         << *i << "|" << this->PlatformName << "\n";
+         << "|" << this->GetPlatformName() << ".ActiveCfg = " << *i << "|"
+         << (platformMapping ? platformMapping : this->GetPlatformName())
+         << "\n";
     if(partOfDefaultBuild)
       {
       fout << "\t\t{" << guid << "}." << *i
-           << "|" << this->PlatformName << ".Build.0 = "
-           << *i << "|" << this->PlatformName << "\n";
+           << "|" << this->GetPlatformName() << ".Build.0 = " << *i << "|"
+           << (platformMapping ? platformMapping : this->GetPlatformName())
+           << "\n";
       }
+    }
+}
+
+//----------------------------------------------------------------------------
+bool cmGlobalVisualStudio8Generator::ComputeTargetDepends()
+{
+  // Skip over the cmGlobalVisualStudioGenerator implementation!
+  // We do not need the support that VS <= 7.1 needs.
+  return this->cmGlobalGenerator::ComputeTargetDepends();
+}
+
+//----------------------------------------------------------------------------
+void cmGlobalVisualStudio8Generator::WriteProjectDepends(
+  std::ostream& fout, const char*, const char*, cmTarget& t)
+{
+  TargetDependSet const& unordered = this->GetTargetDirectDepends(t);
+  OrderedTargetDependSet depends(unordered);
+  for(OrderedTargetDependSet::const_iterator i = depends.begin();
+      i != depends.end(); ++i)
+    {
+    std::string guid = this->GetGUID((*i)->GetName());
+    fout << "\t\t{" << guid << "} = {" << guid << "}\n";
     }
 }
 
@@ -327,6 +358,15 @@ static cmVS7FlagTable cmVS8ExtraFlagTable[] =
   {"ExceptionHandling", "GX", "enable c++ exceptions", "1", 0},
   {"ExceptionHandling", "EHsc", "enable c++ exceptions", "1", 0},
   {"ExceptionHandling", "EHa", "enable SEH exceptions", "2", 0},
+
+  {"EnablePREfast", "analyze", "", "true", 0},
+  {"EnablePREfast", "analyze-", "", "false", 0},
+
+  // Language options
+  {"TreatWChar_tAsBuiltInType", "Zc:wchar_t",
+   "wchar_t is a built-in type", "true", 0},
+  {"TreatWChar_tAsBuiltInType", "Zc:wchar_t-",
+   "wchar_t is not a built-in type", "false", 0},
 
   {0,0,0,0,0}
 };

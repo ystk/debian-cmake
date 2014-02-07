@@ -51,6 +51,8 @@ static const char* SLASTREnglish =
 //----------------------------------------------------------------------
 cmCPackDragNDropGenerator::cmCPackDragNDropGenerator()
 {
+  // default to one package file for components
+  this->componentPackageMethod = ONE_PACKAGE;
 }
 
 //----------------------------------------------------------------------
@@ -61,6 +63,12 @@ cmCPackDragNDropGenerator::~cmCPackDragNDropGenerator()
 //----------------------------------------------------------------------
 int cmCPackDragNDropGenerator::InitializeInternal()
 {
+  // Starting with Xcode 4.3, look in "/Applications/Xcode.app" first:
+  //
+  std::vector<std::string> paths;
+  paths.push_back("/Applications/Xcode.app/Contents/Developer/Tools");
+  paths.push_back("/Developer/Tools");
+
   const std::string hdiutil_path = cmSystemTools::FindProgram("hdiutil",
     std::vector<std::string>(), false);
   if(hdiutil_path.empty())
@@ -73,7 +81,7 @@ int cmCPackDragNDropGenerator::InitializeInternal()
   this->SetOptionIfNotSet("CPACK_COMMAND_HDIUTIL", hdiutil_path.c_str());
 
   const std::string setfile_path = cmSystemTools::FindProgram("SetFile",
-    std::vector<std::string>(1, "/Developer/Tools"), false);
+    paths, false);
   if(setfile_path.empty())
     {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
@@ -84,7 +92,7 @@ int cmCPackDragNDropGenerator::InitializeInternal()
   this->SetOptionIfNotSet("CPACK_COMMAND_SETFILE", setfile_path.c_str());
   
   const std::string rez_path = cmSystemTools::FindProgram("Rez",
-    std::vector<std::string>(1, "/Developer/Tools"), false);
+    paths, false);
   if(rez_path.empty())
     {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
@@ -104,12 +112,59 @@ const char* cmCPackDragNDropGenerator::GetOutputExtension()
 }
 
 //----------------------------------------------------------------------
-int cmCPackDragNDropGenerator::CompressFiles(const char* outFileName,
-  const char* toplevel, const std::vector<std::string>& files)
+int cmCPackDragNDropGenerator::PackageFiles()
 {
-  (void) files;
+  // gather which directories to make dmg files for
+  // multiple directories occur if packaging components or groups separately
 
-  return this->CreateDMG(toplevel, outFileName);
+  // monolith
+  if(this->Components.empty())
+    {
+    return this->CreateDMG(toplevel, packageFileNames[0]);
+    }
+
+  // component install
+  std::vector<std::string> package_files;
+
+  std::map<std::string, cmCPackComponent>::iterator compIt;
+  for (compIt=this->Components.begin();
+       compIt!=this->Components.end(); ++compIt )
+    {
+    std::string name = GetComponentInstallDirNameSuffix(compIt->first);
+    package_files.push_back(name);
+    }
+  std::sort(package_files.begin(), package_files.end());
+  package_files.erase(std::unique(package_files.begin(),
+                      package_files.end()),
+                      package_files.end());
+
+
+  // loop to create dmg files
+  packageFileNames.clear();
+  for(size_t i=0; i<package_files.size(); i++)
+    {
+    std::string full_package_name = std::string(toplevel) + std::string("/");
+    if(package_files[i] == "ALL_IN_ONE")
+      {
+      full_package_name += this->GetOption("CPACK_PACKAGE_FILE_NAME");
+      }
+    else
+      {
+      full_package_name += package_files[i];
+      }
+    full_package_name += std::string(GetOutputExtension());
+    packageFileNames.push_back(full_package_name);
+
+    std::string src_dir = toplevel;
+    src_dir += "/";
+    src_dir += package_files[i];
+
+    if(0 == this->CreateDMG(src_dir, full_package_name))
+      {
+      return 0;
+      }
+    }
+  return 1;
 }
 
 //----------------------------------------------------------------------
@@ -161,11 +216,11 @@ bool cmCPackDragNDropGenerator::RunCommand(cmOStringStream& command,
 }
 
 //----------------------------------------------------------------------
-int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
-  const std::string& outFileName)
+int cmCPackDragNDropGenerator::CreateDMG(const std::string& src_dir,
+                                         const std::string& output_file)
 {
   // Get optional arguments ...
-  const std::string cpack_package_icon = this->GetOption("CPACK_PACKAGE_ICON") 
+  const std::string cpack_package_icon = this->GetOption("CPACK_PACKAGE_ICON")
     ? this->GetOption("CPACK_PACKAGE_ICON") : "";
   
   const std::string cpack_dmg_volume_name =
@@ -200,7 +255,7 @@ int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
   // The staging directory contains everything that will end-up inside the
   // final disk image ...
   cmOStringStream staging;
-  staging << toplevel;
+  staging << src_dir;
 
   // Add a symlink to /Applications so users can drag-and-drop the bundle
   // into it
@@ -372,6 +427,7 @@ int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
     if(ifs.is_open())
     {
       cmGeneratedFileStream osf(sla_r.c_str());
+      osf << "#include <CoreServices/CoreServices.r>\n\n";
       osf << SLAHeader;
       osf << "\n";
       osf << "data 'TEXT' (5002, \"English\") {\n";
@@ -432,13 +488,11 @@ int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
  
     // Rez the SLA 
     cmOStringStream embed_sla_command;
-    embed_sla_command << "/bin/bash -c \"";   // need expansion of "*.r"
     embed_sla_command << this->GetOption("CPACK_COMMAND_REZ");
-    embed_sla_command << " /Developer/Headers/FlatCarbon/*.r ";
-    embed_sla_command << "'" << sla_r << "'";
+    embed_sla_command << " \"" << sla_r << "\"";
     embed_sla_command << " -a -o ";
-    embed_sla_command << "'" << temp_udco << "'\"";
-    
+    embed_sla_command << "\"" << temp_udco << "\"";
+
     if(!this->RunCommand(embed_sla_command, &error))
       {
       cmCPackLogger(cmCPackLog::LOG_ERROR,
@@ -475,7 +529,7 @@ int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
   final_image_command << cpack_dmg_format;
   final_image_command << " -imagekey";
   final_image_command << " zlib-level=9";
-  final_image_command << " -o \"" << outFileName << "\"";
+  final_image_command << " -o \"" << output_file << "\"";
   
   if(!this->RunCommand(final_image_command))
     {
@@ -487,4 +541,48 @@ int cmCPackDragNDropGenerator::CreateDMG(const std::string& toplevel,
     }
 
   return 1;
+}
+
+bool cmCPackDragNDropGenerator::SupportsComponentInstallation() const
+{
+  return true;
+}
+
+std::string
+cmCPackDragNDropGenerator::GetComponentInstallDirNameSuffix(
+                           const std::string& componentName)
+{
+  // we want to group components together that go in the same dmg package
+  std::string package_file_name = this->GetOption("CPACK_PACKAGE_FILE_NAME");
+
+  // we have 3 mutually exclusive modes to work in
+  // 1. all components in one package
+  // 2. each group goes in its own package with left over
+  //    components in their own package
+  // 3. ignore groups - if grouping is defined, it is ignored
+  //    and each component goes in its own package
+
+  if(this->componentPackageMethod == ONE_PACKAGE)
+    {
+    return "ALL_IN_ONE";
+    }
+
+  if(this->componentPackageMethod == ONE_PACKAGE_PER_GROUP)
+    {
+    // We have to find the name of the COMPONENT GROUP
+    // the current COMPONENT belongs to.
+    std::string groupVar = "CPACK_COMPONENT_" +
+                         cmSystemTools::UpperCase(componentName) + "_GROUP";
+    const char* _groupName = GetOption(groupVar.c_str());
+    if (_groupName)
+      {
+      std::string groupName = _groupName;
+
+      groupName = GetComponentPackageFileName(package_file_name,
+                                              groupName, true);
+      return groupName;
+      }
+    }
+
+  return GetComponentPackageFileName(package_file_name, componentName, false);
 }

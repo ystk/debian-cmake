@@ -42,13 +42,13 @@ public:
   /**
    * The name of the command as specified in CMakeList.txt.
    */
-  virtual const char* GetName() 
+  virtual const char* GetName() const
     {return "add_custom_target";}
   
   /**
    * Succinct documentation.
    */
-  virtual const char* GetTerseDocumentation() 
+  virtual const char* GetTerseDocumentation() const
     {
     return "Add a target with no output so it will always be built.";
     }
@@ -56,7 +56,7 @@ public:
   /**
    * More documentation.
    */
-  virtual const char* GetFullDocumentation()
+  virtual const char* GetFullDocumentation() const
     {
     return
       "  add_custom_target(Name [ALL] [command1 [args1...]]\n"
@@ -79,6 +79,8 @@ public:
       "empty target will be created. "
       "If WORKING_DIRECTORY is set, then the command will be run in that "
       "directory. "
+      "If it is a relative path it will be interpreted relative to the "
+      "build tree directory corresponding to the current source directory. "
       "If COMMENT is set, the value will be displayed as a "
       "message before the commands are executed at build time. "
       "Dependencies listed with the DEPENDS argument may reference files "

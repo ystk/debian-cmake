@@ -23,7 +23,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 #
@@ -108,8 +108,10 @@ foreach(dir
     PATHS
     ${DCMTK_DIR}/${dir}/include
     ${DCMTK_DIR}/${dir}
-    ${DCMTK_DIR}/include/${dir})
-
+    ${DCMTK_DIR}/include/${dir}
+    ${DCMTK_DIR}/include/dcmtk/${dir}
+    ${DCMTK_DIR}/${dir}/include/dcmtk/${dir}
+    )
   mark_as_advanced(DCMTK_${dir}_INCLUDE_DIR)
 
   if(DCMTK_${dir}_INCLUDE_DIR)
@@ -132,7 +134,7 @@ if(DCMTK_ofstd_INCLUDE_DIR)
   mark_as_advanced(DCMTK_dcmtk_INCLUDE_DIR)
 endif()
 
-include(FindPackageHandleStandardArgs)
+include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 find_package_handle_standard_args(DCMTK DEFAULT_MSG
   DCMTK_config_INCLUDE_DIR
   DCMTK_ofstd_INCLUDE_DIR

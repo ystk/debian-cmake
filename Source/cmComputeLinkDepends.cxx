@@ -27,7 +27,7 @@
 This file computes an ordered list of link items to use when linking a
 single target in one configuration.  Each link item is identified by
 the string naming it.  A graph of dependencies is created in which
-each node corresponds to one item and directed eges lead from nodes to
+each node corresponds to one item and directed edges lead from nodes to
 those which must *follow* them on the link line.  For example, the
 graph
 
@@ -42,7 +42,7 @@ search of the link dependencies starting from the main target.
 
 There are two types of items: those with known direct dependencies and
 those without known dependencies.  We will call the two types "known
-items" and "unknown items", respecitvely.  Known items are those whose
+items" and "unknown items", respectively.  Known items are those whose
 names correspond to targets (built or imported) and those for which an
 old-style <item>_LIB_DEPENDS variable is defined.  All other items are
 unknown and we must infer dependencies for them.  For items that look
@@ -69,7 +69,7 @@ We can also infer the edge
 because *every* time A appears B is seen on its right.  We do not know
 whether A really needs symbols from B to link, but it *might* so we
 must preserve their order.  This is the case also for the following
-explict lists:
+explicit lists:
 
   X: A B Y
   Y: A B
@@ -150,7 +150,7 @@ times the component needs to be seen (once for trivial components,
 twice for non-trivial).  If at any time another component finishes and
 re-adds an already pending component, the pending component is reset
 so that it needs to be seen in its entirety again.  This ensures that
-all dependencies of a component are satisified no matter where it
+all dependencies of a component are satisfied no matter where it
 appears.
 
 After the original link line has been completed, we append to it the
@@ -285,7 +285,7 @@ cmComputeLinkDepends::AllocateLinkEntry(std::string const& item)
     lei = this->LinkEntryIndex.insert(index_entry).first;
   this->EntryList.push_back(LinkEntry());
   this->InferredDependSets.push_back(0);
-  this->EntryConstraintGraph.push_back(NodeList());
+  this->EntryConstraintGraph.push_back(EdgeList());
   return lei;
 }
 
@@ -358,7 +358,7 @@ void cmComputeLinkDepends::FollowLinkEntry(BFSEntry const& qe)
       this->AddLinkEntries(depender_index, iface->Libraries);
 
       // Handle dependent shared libraries.
-      this->QueueSharedDependencies(depender_index, iface->SharedDeps);
+      this->FollowSharedDeps(depender_index, iface);
 
       // Support for CMP0003.
       for(std::vector<std::string>::const_iterator
@@ -373,6 +373,23 @@ void cmComputeLinkDepends::FollowLinkEntry(BFSEntry const& qe)
     {
     // Follow the old-style dependency list.
     this->AddVarLinkEntries(depender_index, qe.LibDepends);
+    }
+}
+
+//----------------------------------------------------------------------------
+void
+cmComputeLinkDepends
+::FollowSharedDeps(int depender_index, cmTarget::LinkInterface const* iface,
+                   bool follow_interface)
+{
+  // Follow dependencies if we have not followed them already.
+  if(this->SharedDepFollowed.insert(depender_index).second)
+    {
+    if(follow_interface)
+      {
+      this->QueueSharedDependencies(depender_index, iface->Libraries);
+      }
+    this->QueueSharedDependencies(depender_index, iface->SharedDeps);
     }
 }
 
@@ -429,8 +446,8 @@ void cmComputeLinkDepends::HandleSharedDependency(SharedDepEntry const& dep)
     if(cmTarget::LinkInterface const* iface =
        entry.Target->GetLinkInterface(this->Config))
       {
-      // We use just the shared dependencies, not the interface.
-      this->QueueSharedDependencies(index, iface->SharedDeps);
+      // Follow public and private dependencies transitively.
+      this->FollowSharedDeps(index, iface, true);
       }
     }
 }
@@ -616,6 +633,19 @@ cmTarget* cmComputeLinkDepends::FindTargetToLink(int depender_index,
     tgt = 0;
     }
 
+  if(tgt && tgt->GetType() == cmTarget::OBJECT_LIBRARY)
+    {
+    cmOStringStream e;
+    e << "Target \"" << this->Target->GetName() << "\" links to "
+      "OBJECT library \"" << tgt->GetName() << "\" but this is not "
+      "allowed.  "
+      "One may link only to STATIC or SHARED libraries, or to executables "
+      "with the ENABLE_EXPORTS property set.";
+    this->CMakeInstance->IssueMessage(cmake::FATAL_ERROR, e.str(),
+                                      this->Target->GetBacktrace());
+    tgt = 0;
+    }
+
   // Return the target found, if any.
   return tgt;
 }
@@ -669,7 +699,7 @@ void cmComputeLinkDepends::CleanConstraintGraph()
     cmsys_stl::sort(i->begin(), i->end());
 
     // Make the edge list unique.
-    NodeList::iterator last = cmsys_stl::unique(i->begin(), i->end());
+    EdgeList::iterator last = cmsys_stl::unique(i->begin(), i->end());
     i->erase(last, i->end());
     }
 }
@@ -681,9 +711,9 @@ void cmComputeLinkDepends::DisplayConstraintGraph()
   cmOStringStream e;
   for(unsigned int i=0; i < this->EntryConstraintGraph.size(); ++i)
     {
-    NodeList const& nl = this->EntryConstraintGraph[i];
+    EdgeList const& nl = this->EntryConstraintGraph[i];
     e << "item " << i << " is [" << this->EntryList[i].Item << "]\n";
-    for(NodeList::const_iterator j = nl.begin(); j != nl.end(); ++j)
+    for(EdgeList::const_iterator j = nl.begin(); j != nl.end(); ++j)
       {
       e << "  item " << *j << " must follow it\n";
       }
@@ -758,10 +788,11 @@ cmComputeLinkDepends::DisplayComponents()
       fprintf(stderr, "  item %d [%s]\n", i,
               this->EntryList[i].Item.c_str());
       }
-    NodeList const& ol = this->CCG->GetComponentGraphEdges(c);
-    for(NodeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi)
+    EdgeList const& ol = this->CCG->GetComponentGraphEdges(c);
+    for(EdgeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi)
       {
-      fprintf(stderr, "  followed by Component (%d)\n", *oi);
+      int i = *oi;
+      fprintf(stderr, "  followed by Component (%d)\n", i);
       }
     fprintf(stderr, "  topo order index %d\n",
             this->ComponentOrder[c]);
@@ -784,8 +815,8 @@ void cmComputeLinkDepends::VisitComponent(unsigned int c)
   // Visit the neighbors of the component first.
   // Run in reverse order so the topological order will preserve the
   // original order where there are no constraints.
-  NodeList const& nl = this->CCG->GetComponentGraphEdges(c);
-  for(NodeList::const_reverse_iterator ni = nl.rbegin();
+  EdgeList const& nl = this->CCG->GetComponentGraphEdges(c);
+  for(EdgeList::const_reverse_iterator ni = nl.rbegin();
       ni != nl.rend(); ++ni)
     {
     this->VisitComponent(*ni);
@@ -856,8 +887,8 @@ void cmComputeLinkDepends::VisitEntry(int index)
   // are now pending.
   if(completed)
     {
-    NodeList const& ol = this->CCG->GetComponentGraphEdges(component);
-    for(NodeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi)
+    EdgeList const& ol = this->CCG->GetComponentGraphEdges(component);
+    for(EdgeList::const_iterator oi = ol.begin(); oi != ol.end(); ++oi)
       {
       // This entire component is now pending no matter whether it has
       // been partially seen already.

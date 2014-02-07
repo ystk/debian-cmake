@@ -61,7 +61,6 @@ public:
   
   // return true if target is fortran only
   bool TargetIsFortranOnly(cmTarget& t);
-  const char* GetUtilityForTarget(cmTarget& target, const char*);
 
   /** Get the top-level registry key for this VS version.  */
   std::string GetRegistryBase();
@@ -70,9 +69,14 @@ public:
       i.e. "Can I build Debug and Release in the same tree?" */
   virtual bool IsMultiConfig() { return true; }
 
-protected:
-  void FixUtilityDepends();
+  class TargetSet: public std::set<cmTarget*> {};
+  struct TargetCompare
+  {
+    bool operator()(cmTarget const* l, cmTarget const* r) const;
+  };
+  class OrderedTargetDependSet;
 
+protected:
   // Does this VS version link targets to each other if there are
   // dependencies in the SLN file?  This was done for VS versions
   // below 8.
@@ -80,24 +84,38 @@ protected:
 
   virtual const char* GetIDEVersion() = 0;
 
-  struct TargetCompare
-  {
-    bool operator()(cmTarget const* l, cmTarget const* r) const;
-  };
-  class OrderedTargetDependSet: public std::multiset<cmTarget*, TargetCompare>
-  {
-  public:
-    OrderedTargetDependSet(cmGlobalGenerator::TargetDependSet const&);
-  };
-
-  virtual void GetTargetSets(TargetDependSet& projectTargets,
-                             TargetDependSet& originalTargets,
-                             cmLocalGenerator* root, GeneratorVector const&);
+  virtual bool ComputeTargetDepends();
+  class VSDependSet: public std::set<cmStdString> {};
+  class VSDependMap: public std::map<cmTarget*, VSDependSet> {};
+  VSDependMap VSTargetDepends;
+  void ComputeVSTargetDepends(cmTarget&);
 
   bool CheckTargetLinks(cmTarget& target, const char* name);
+  std::string GetUtilityForTarget(cmTarget& target, const char*);
+  virtual std::string WriteUtilityDepend(cmTarget*) = 0;
+  std::string GetUtilityDepend(cmTarget* target);
+  typedef std::map<cmTarget*, cmStdString> UtilityDependsMap;
+  UtilityDependsMap UtilityDepends;
 private:
-  void FixUtilityDependsForTarget(cmTarget& target);
-  void CreateUtilityDependTarget(cmTarget& target);
+  void ComputeTargetObjects(cmGeneratorTarget* gt) const;
+
+  void FollowLinkDepends(cmTarget* target, std::set<cmTarget*>& linked);
+
+  class TargetSetMap: public std::map<cmTarget*, TargetSet> {};
+  TargetSetMap TargetLinkClosure;
+  void FillLinkClosure(cmTarget* target, TargetSet& linked);
+  TargetSet const& GetTargetLinkClosure(cmTarget* target);
+};
+
+class cmGlobalVisualStudioGenerator::OrderedTargetDependSet:
+  public std::multiset<cmTargetDepend,
+                       cmGlobalVisualStudioGenerator::TargetCompare>
+{
+public:
+  typedef cmGlobalGenerator::TargetDependSet TargetDependSet;
+  typedef cmGlobalVisualStudioGenerator::TargetSet TargetSet;
+  OrderedTargetDependSet(TargetDependSet const&);
+  OrderedTargetDependSet(TargetSet const&);
 };
 
 #endif

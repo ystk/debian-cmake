@@ -28,11 +28,23 @@ function(help_xcode_depends)
   endif(HELP_XCODE)
 endfunction(help_xcode_depends)
 
+if("${CMAKE_GENERATOR}" MATCHES "Ninja")
+  set(HELP_NINJA 1) # TODO Why is this needed?
+endif()
+
 # The Intel compiler causes the MSVC linker to crash during
 # incremental linking, so avoid the /INCREMENTAL:YES flag.
 if(WIN32 AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Intel")
   set(_cmake_options "-DCMAKE_EXE_LINKER_FLAGS=")
 endif()
+
+if("${CMAKE_GENERATOR}" MATCHES "Make")
+  set(TEST_LINK_DEPENDS ${BuildDepends_BINARY_DIR}/Project/linkdep.txt)
+  file(WRITE ${TEST_LINK_DEPENDS} "1")
+endif()
+list(APPEND _cmake_options "-DTEST_LINK_DEPENDS=${TEST_LINK_DEPENDS}")
+
+list(APPEND _cmake_options "-DCMAKE_FORCE_DEPFILES=1")
 
 file(MAKE_DIRECTORY ${BuildDepends_BINARY_DIR}/Project)
 message("Creating Project/foo.cxx")
@@ -131,6 +143,10 @@ file(WRITE ${BuildDepends_BINARY_DIR}/Project/zot_macro_dir.hxx
 file(WRITE ${BuildDepends_BINARY_DIR}/Project/zot_macro_tgt.hxx
   "static const char* zot_macro_tgt = \"zot_macro_tgt changed\";\n")
 
+if(TEST_LINK_DEPENDS)
+  file(WRITE ${TEST_LINK_DEPENDS} "2")
+endif()
+
 help_xcode_depends()
 
 message("Building project second time")
@@ -142,7 +158,7 @@ try_compile(RESULT
   OUTPUT_VARIABLE OUTPUT)
 
 # Xcode is in serious need of help here
-if(HELP_XCODE)
+if(HELP_XCODE OR HELP_NINJA)
   try_compile(RESULT 
     ${BuildDepends_BINARY_DIR}/Project
     ${BuildDepends_SOURCE_DIR}/Project
@@ -153,7 +169,7 @@ if(HELP_XCODE)
     ${BuildDepends_SOURCE_DIR}/Project
     testRebuild
     OUTPUT_VARIABLE OUTPUT)
-endif(HELP_XCODE)
+endif()
 
 message("Output from second build:\n${OUTPUT}")
 if(NOT RESULT)
@@ -194,3 +210,16 @@ if("${out}" STREQUAL "${VALUE_CHANGED}")
 else("${out}" STREQUAL "${VALUE_CHANGED}")
   message(SEND_ERROR "Project did not rebuild properly!")
 endif("${out}" STREQUAL "${VALUE_CHANGED}")
+
+if(TEST_LINK_DEPENDS)
+  set(linkdep ${BuildDepends_BINARY_DIR}/Project/linkdep${CMAKE_EXECUTABLE_SUFFIX})
+  if(${linkdep} IS_NEWER_THAN ${TEST_LINK_DEPENDS})
+    message("LINK_DEPENDS worked")
+  else()
+    message(SEND_ERROR "LINK_DEPENDS failed.  Executable
+  ${linkdep}
+is not newer than dependency
+  ${TEST_LINK_DEPENDS}
+")
+  endif()
+endif()

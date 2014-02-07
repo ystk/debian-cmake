@@ -6,7 +6,7 @@
 #  CMAKE_USE_PTHREADS_INIT    - are we using pthreads
 #  CMAKE_HP_PTHREADS_INIT     - are we using hp pthreads
 # For systems with multiple thread libraries, caller can set
-#  CMAKE_THREAD_PREFER_PTHREADS
+#  CMAKE_THREAD_PREFER_PTHREAD
 
 #=============================================================================
 # Copyright 2002-2009 Kitware, Inc.
@@ -18,11 +18,12 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 INCLUDE (CheckIncludeFiles)
 INCLUDE (CheckLibraryExists)
+INCLUDE (CheckSymbolExists)
 SET(Threads_FOUND FALSE)
 
 # Do we have sproc?
@@ -44,33 +45,41 @@ ELSE()
     #
     SET(CMAKE_HAVE_THREADS_LIBRARY)
     IF(NOT THREADS_HAVE_PTHREAD_ARG)
-
-      # Do we have -lpthreads
-      CHECK_LIBRARY_EXISTS(pthreads pthread_create "" CMAKE_HAVE_PTHREADS_CREATE)
-      IF(CMAKE_HAVE_PTHREADS_CREATE)
-        SET(CMAKE_THREAD_LIBS_INIT "-lpthreads")
+      # Check if pthread functions are in normal C library
+      CHECK_SYMBOL_EXISTS(pthread_create pthread.h CMAKE_HAVE_LIBC_CREATE)
+      IF(CMAKE_HAVE_LIBC_CREATE)
+        SET(CMAKE_THREAD_LIBS_INIT "")
         SET(CMAKE_HAVE_THREADS_LIBRARY 1)
         SET(Threads_FOUND TRUE)
       ENDIF()
 
-      # Ok, how about -lpthread
-      CHECK_LIBRARY_EXISTS(pthread pthread_create "" CMAKE_HAVE_PTHREAD_CREATE)
-      IF(CMAKE_HAVE_PTHREAD_CREATE)
-        SET(CMAKE_THREAD_LIBS_INIT "-lpthread")
-        SET(Threads_FOUND TRUE)
-        SET(CMAKE_HAVE_THREADS_LIBRARY 1)
-      ENDIF()
-
-      IF(CMAKE_SYSTEM MATCHES "SunOS.*")
-        # On sun also check for -lthread
-        CHECK_LIBRARY_EXISTS(thread thr_create "" CMAKE_HAVE_THR_CREATE)
-        IF(CMAKE_HAVE_THR_CREATE)
-          SET(CMAKE_THREAD_LIBS_INIT "-lthread")
+      IF(NOT CMAKE_HAVE_THREADS_LIBRARY)
+        # Do we have -lpthreads
+        CHECK_LIBRARY_EXISTS(pthreads pthread_create "" CMAKE_HAVE_PTHREADS_CREATE)
+        IF(CMAKE_HAVE_PTHREADS_CREATE)
+          SET(CMAKE_THREAD_LIBS_INIT "-lpthreads")
           SET(CMAKE_HAVE_THREADS_LIBRARY 1)
           SET(Threads_FOUND TRUE)
         ENDIF()
-      ENDIF(CMAKE_SYSTEM MATCHES "SunOS.*")
 
+        # Ok, how about -lpthread
+        CHECK_LIBRARY_EXISTS(pthread pthread_create "" CMAKE_HAVE_PTHREAD_CREATE)
+        IF(CMAKE_HAVE_PTHREAD_CREATE)
+          SET(CMAKE_THREAD_LIBS_INIT "-lpthread")
+          SET(CMAKE_HAVE_THREADS_LIBRARY 1)
+          SET(Threads_FOUND TRUE)
+        ENDIF()
+
+        IF(CMAKE_SYSTEM MATCHES "SunOS.*")
+          # On sun also check for -lthread
+          CHECK_LIBRARY_EXISTS(thread thr_create "" CMAKE_HAVE_THR_CREATE)
+          IF(CMAKE_HAVE_THR_CREATE)
+            SET(CMAKE_THREAD_LIBS_INIT "-lthread")
+            SET(CMAKE_HAVE_THREADS_LIBRARY 1)
+            SET(Threads_FOUND TRUE)
+          ENDIF()
+        ENDIF(CMAKE_SYSTEM MATCHES "SunOS.*")
+      ENDIF(NOT CMAKE_HAVE_THREADS_LIBRARY)
     ENDIF(NOT THREADS_HAVE_PTHREAD_ARG)
 
     IF(NOT CMAKE_HAVE_THREADS_LIBRARY)
@@ -111,7 +120,7 @@ ELSE()
   ENDIF(CMAKE_HAVE_PTHREAD_H)
 ENDIF()
 
-IF(CMAKE_THREAD_LIBS_INIT)
+IF(CMAKE_THREAD_LIBS_INIT OR CMAKE_HAVE_LIBC_CREATE)
   SET(CMAKE_USE_PTHREADS_INIT 1)
   SET(Threads_FOUND TRUE)
 ENDIF()
@@ -153,5 +162,5 @@ IF(CMAKE_USE_PTHREADS_INIT)
   ENDIF()
 ENDIF(CMAKE_USE_PTHREADS_INIT)
 
-INCLUDE(FindPackageHandleStandardArgs)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(Threads DEFAULT_MSG Threads_FOUND)

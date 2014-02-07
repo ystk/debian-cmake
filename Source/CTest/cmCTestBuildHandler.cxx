@@ -43,6 +43,7 @@ static const char* cmCTestErrorMatches[] = {
   "^[Bb]us [Ee]rror",
   "^[Ss]egmentation [Vv]iolation",
   "^[Ss]egmentation [Ff]ault",
+  ":.*[Pp]ermission [Dd]enied",
   "([^ :]+):([0-9]+): ([^ \\t])",
   "([^:]+): error[ \\t]*[0-9]+[ \\t]*:",
   "^Error ([0-9]+):",
@@ -56,16 +57,16 @@ static const char* cmCTestErrorMatches[] = {
   "^ild:([ \\t])*\\(undefined symbol\\)",
   "([^ :]+) : (error|fatal error|catastrophic error)",
   "([^:]+): (Error:|error|undefined reference|multiply defined)",
-  "([^:]+)\\(([^\\)]+)\\) : (error|fatal error|catastrophic error)",
+  "([^:]+)\\(([^\\)]+)\\) ?: (error|fatal error|catastrophic error)",
   "^fatal error C[0-9]+:",
   ": syntax error ",
   "^collect2: ld returned 1 exit status",
   "ld terminated with signal",
-  "Unsatisfied symbols:",
+  "Unsatisfied symbol",
   "^Unresolved:",
-  "Undefined symbols:",
+  "Undefined symbol",
   "^Undefined[ \\t]+first referenced",
-  "^CMake Error:",
+  "^CMake Error.*:",
   ":[ \\t]cannot find",
   ":[ \\t]can't find",
   ": \\*\\*\\* No rule to make target \\`.*\\'.  Stop",
@@ -92,6 +93,8 @@ static const char* cmCTestErrorMatches[] = {
   ": No such file or directory",
   ": Invalid argument",
   "^The project cannot be built\\.",
+  "^\\[ERROR\\]",
+  "^Command .* failed with exit code",
   0
 };
 
@@ -118,7 +121,7 @@ static const char* cmCTestWarningMatches[] = {
   "^\"[^\"]+\", line [0-9]+: [Ww](arning|arnung)",
   "([^:]+): warning[ \\t]*[0-9]+[ \\t]*:",
   "^(Warning|Warnung) ([0-9]+):",
-  "^(Warning|Warnung) ",
+  "^(Warning|Warnung)[ :]",
   "WARNING: ",
   "([^ :]+) : warning",
   "([^:]+): warning",
@@ -129,6 +132,8 @@ static const char* cmCTestWarningMatches[] = {
   "\\([0-9]*\\): remark #[0-9]*",
   "\".*\", line [0-9]+: remark\\([0-9]*\\):",
   "cc-[0-9]* CC: REMARK File = .*, Line = [0-9]*",
+  "^CMake Warning.*:",
+  "^\\[WARNING\\]",
   0
 };
 
@@ -174,8 +179,8 @@ cmCTestWarningErrorFileLine[] = {
 //----------------------------------------------------------------------
 cmCTestBuildHandler::cmCTestBuildHandler()
 {
-  this->MaxPreContext = 6;
-  this->MaxPostContext = 6;
+  this->MaxPreContext = 10;
+  this->MaxPostContext = 10;
 
   this->MaxErrors = 50;
   this->MaxWarnings = 50;
@@ -214,8 +219,8 @@ void cmCTestBuildHandler::Initialize()
   this->ErrorsAndWarnings.clear();
   this->LastErrorOrWarning = this->ErrorsAndWarnings.end();
   this->PostContextCount = 0;
-  this->MaxPreContext = 6;
-  this->MaxPostContext = 6;
+  this->MaxPreContext = 10;
+  this->MaxPostContext = 10;
   this->PreContext.clear();
 
   this->TotalErrors = 0;
@@ -248,6 +253,20 @@ void cmCTestBuildHandler::PopulateCustomVectors(cmMakefile *mf)
   this->CTest->PopulateCustomInteger(mf,
                              "CTEST_CUSTOM_MAXIMUM_NUMBER_OF_WARNINGS",
                              this->MaxWarnings);
+
+  int n = -1;
+  this->CTest->PopulateCustomInteger(mf, "CTEST_CUSTOM_ERROR_PRE_CONTEXT", n);
+  if (n != -1)
+    {
+    this->MaxPreContext = static_cast<size_t>(n);
+    }
+
+  n = -1;
+  this->CTest->PopulateCustomInteger(mf, "CTEST_CUSTOM_ERROR_POST_CONTEXT", n);
+  if (n != -1)
+    {
+    this->MaxPostContext = static_cast<size_t>(n);
+    }
 
   // Record the user-specified custom warning rules.
   if(const char* customWarningMatchers =
@@ -959,7 +978,7 @@ int cmCTestBuildHandler::RunMakeCommand(const char* command,
   this->ProcessBuffer(0, 0, tick, tick_len, ofs,
     &this->BuildProcessingErrorQueue);
   cmCTestLog(this->CTest, OUTPUT, " Size of output: "
-    << int(this->BuildOutputLogSize / 1024.0) << "K" << std::endl);
+    << ((this->BuildOutputLogSize + 512) / 1024) << "K" << std::endl);
 
   // Properly handle output of the build command
   cmsysProcess_WaitForExit(cp, 0);
@@ -1171,7 +1190,7 @@ void cmCTestBuildHandler::ProcessBuffer(const char* data, int length,
     if ( tick % tick_line_len == 0 && tick > 0 )
       {
       cmCTestLog(this->CTest, HANDLER_OUTPUT, "  Size: "
-        << int((this->BuildOutputLogSize / 1024.0) + 1) << "K" << std::endl
+        << ((this->BuildOutputLogSize + 512) / 1024) << "K" << std::endl
         << "    ");
       }
     }

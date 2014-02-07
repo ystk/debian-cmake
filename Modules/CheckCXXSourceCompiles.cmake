@@ -1,6 +1,6 @@
-# - Check if the given C++ source code compiles.
+# - Check if given C++ source compiles and links into an executable
 # CHECK_CXX_SOURCE_COMPILES(<code> <var> [FAIL_REGEX <fail-regex>])
-#  <code>       - source code to try to compile
+#  <code>       - source code to try to compile, must define 'main'
 #  <var>        - variable to store whether the source code compiled
 #  <fail-regex> - fail if test output matches this regex
 # The following variables may be set before calling this macro to
@@ -21,8 +21,11 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
+
+INCLUDE("${CMAKE_CURRENT_LIST_DIR}/CMakeExpandImportedTargets.cmake")
+
 
 MACRO(CHECK_CXX_SOURCE_COMPILES SOURCE VAR)
   IF("${VAR}" MATCHES "^${VAR}$")
@@ -41,8 +44,10 @@ MACRO(CHECK_CXX_SOURCE_COMPILES SOURCE VAR)
     SET(MACRO_CHECK_FUNCTION_DEFINITIONS
       "-D${VAR} ${CMAKE_REQUIRED_FLAGS}")
     IF(CMAKE_REQUIRED_LIBRARIES)
+      # this one translates potentially used imported library targets to their files on disk
+      CMAKE_EXPAND_IMPORTED_TARGETS(_ADJUSTED_CMAKE_REQUIRED_LIBRARIES  LIBRARIES  ${CMAKE_REQUIRED_LIBRARIES} CONFIGURATION "${CMAKE_TRY_COMPILE_CONFIGURATION}")
       SET(CHECK_CXX_SOURCE_COMPILES_ADD_LIBRARIES
-        "-DLINK_LIBRARIES:STRING=${CMAKE_REQUIRED_LIBRARIES}")
+        "-DLINK_LIBRARIES:STRING=${_ADJUSTED_CMAKE_REQUIRED_LIBRARIES}")
     ELSE(CMAKE_REQUIRED_LIBRARIES)
       SET(CHECK_CXX_SOURCE_COMPILES_ADD_LIBRARIES)
     ENDIF(CMAKE_REQUIRED_LIBRARIES)

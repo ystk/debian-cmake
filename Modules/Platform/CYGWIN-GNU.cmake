@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 # This module is shared by multiple languages; use include blocker.
@@ -24,7 +24,8 @@ set(CMAKE_CREATE_WIN32_EXE  "-mwindows")
 
 set(CMAKE_GNULD_IMAGE_VERSION
   "-Wl,--major-image-version,<TARGET_VERSION_MAJOR>,--minor-image-version,<TARGET_VERSION_MINOR>")
-
+set(CMAKE_GENERATOR_RC windres)
+enable_language(RC)
 macro(__cygwin_compiler_gnu lang)
   # Binary link rules.
   set(CMAKE_${lang}_CREATE_SHARED_MODULE
@@ -34,7 +35,10 @@ macro(__cygwin_compiler_gnu lang)
   set(CMAKE_${lang}_LINK_EXECUTABLE
     "<CMAKE_${lang}_COMPILER> <FLAGS> <CMAKE_${lang}_LINK_FLAGS> <LINK_FLAGS> <OBJECTS>  -o <TARGET> -Wl,--out-implib,<TARGET_IMPLIB> ${CMAKE_GNULD_IMAGE_VERSION} <LINK_LIBRARIES>")
 
-  set(CMAKE_SHARED_LIBRARY_${lang}_FLAGS "") # No -fPIC on cygwin
+   # No -fPIC on cygwin
+  set(CMAKE_${lang}_COMPILE_OPTIONS_PIC "")
+  set(CMAKE_${lang}_COMPILE_OPTIONS_PIE "")
+  set(CMAKE_SHARED_LIBRARY_${lang}_FLAGS "")
 
   # Initialize C link type selection flags.  These flags are used when
   # building a shared library, shared module, or executable that links

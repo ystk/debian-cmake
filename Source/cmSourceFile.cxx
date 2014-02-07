@@ -16,6 +16,7 @@
 #include "cmMakefile.h"
 #include "cmSystemTools.h"
 #include "cmake.h"
+#include "cmDocumentCompileDefinitions.h"
 
 //----------------------------------------------------------------------------
 cmSourceFile::cmSourceFile(cmMakefile* mf, const char* name):
@@ -101,11 +102,11 @@ cmSourceFileLocation const& cmSourceFile::GetLocation() const
 }
 
 //----------------------------------------------------------------------------
-std::string const& cmSourceFile::GetFullPath()
+std::string const& cmSourceFile::GetFullPath(std::string* error)
 {
   if(this->FullPath.empty())
     {
-    if(this->FindFullPath())
+    if(this->FindFullPath(error))
       {
       this->CheckExtension();
       }
@@ -120,7 +121,7 @@ std::string const& cmSourceFile::GetFullPath() const
 }
 
 //----------------------------------------------------------------------------
-bool cmSourceFile::FindFullPath()
+bool cmSourceFile::FindFullPath(std::string* error)
 {
   // If thie method has already failed once do not try again.
   if(this->FindFullPathFailed)
@@ -187,8 +188,13 @@ bool cmSourceFile::FindFullPath()
     }
 
   cmOStringStream e;
-  e << "Cannot find source file \"" << this->Location.GetName() << "\"";
-  e << ".  Tried extensions";
+  std::string missing = this->Location.GetDirectory();
+  if(!missing.empty())
+    {
+    missing += "/";
+    }
+  missing += this->Location.GetName();
+  e << "Cannot find source file:\n  " << missing << "\nTried extensions";
   for(std::vector<std::string>::const_iterator ext = srcExts.begin();
       ext != srcExts.end(); ++ext)
     {
@@ -199,7 +205,14 @@ bool cmSourceFile::FindFullPath()
     {
     e << " ." << *ext;
     }
-  this->Location.GetMakefile()->IssueMessage(cmake::FATAL_ERROR, e.str());
+  if(error)
+    {
+    *error = e.str();
+    }
+  else
+    {
+    this->Location.GetMakefile()->IssueMessage(cmake::FATAL_ERROR, e.str());
+    }
   this->FindFullPathFailed = true;
   return false;
 }
@@ -278,13 +291,15 @@ void cmSourceFile::SetProperty(const char* prop, const char* value)
 }
 
 //----------------------------------------------------------------------------
-void cmSourceFile::AppendProperty(const char* prop, const char* value)
+void cmSourceFile::AppendProperty(const char* prop, const char* value,
+                                  bool asString)
 {
   if (!prop)
     {
     return;
     }
-  this->Properties.AppendProperty(prop, value, cmProperty::SOURCE_FILE);
+  this->Properties.AppendProperty(prop, value, cmProperty::SOURCE_FILE,
+                                  asString);
 }
 
 //----------------------------------------------------------------------------
@@ -404,15 +419,7 @@ void cmSourceFile::DefineProperties(cmake *cm)
      "The VS6 IDE does not support definition values with spaces "
      "(but NMake does).  Xcode does not support per-configuration "
      "definitions on source files.\n"
-     "Disclaimer: Most native build tools have poor support for escaping "
-     "certain values.  CMake has work-arounds for many cases but some "
-     "values may just not be possible to pass correctly.  If a value "
-     "does not seem to be escaped correctly, do not attempt to "
-     "work-around the problem by adding escape sequences to the value.  "
-     "Your work-around may break in a future version of CMake that "
-     "has improved escape support.  Instead consider defining the macro "
-     "in a (configured) header file.  Then report the limitation.");
-
+     CM_DOCUMENT_COMPILE_DEFINITIONS_DISCLAIMER);
 
   cm->DefineProperty
     ("COMPILE_DEFINITIONS_<CONFIG>", cmProperty::SOURCE_FILE,
@@ -428,6 +435,15 @@ void cmSourceFile::DefineProperties(cmake *cm)
      "If this property is set to true then the source file "
      "is really an object file and should not be compiled.  "
      "It will still be linked into the target though.");
+
+  cm->DefineProperty
+    ("Fortran_FORMAT", cmProperty::SOURCE_FILE,
+     "Set to FIXED or FREE to indicate the Fortran source layout.",
+     "This property tells CMake whether a given Fortran source file "
+     "uses fixed-format or free-format.  "
+     "CMake will pass the corresponding format flag to the compiler.  "
+     "Consider using the target-wide Fortran_FORMAT property if all "
+     "source files in a target share the same format.");
 
   cm->DefineProperty
     ("GENERATED", cmProperty::SOURCE_FILE, 
@@ -465,7 +481,9 @@ void cmSourceFile::DefineProperties(cmake *cm)
      "What programming language is the file.",
      "A property that can be set to indicate what programming language "
      "the source file is. If it is not set the language is determined "
-     "based on the file extension. Typical values are CXX C etc.");
+     "based on the file extension. Typical values are CXX C etc. Setting "
+     "this property for a file means this file will be compiled. "
+     "Do not set this for header or files that should not be compiled.");
 
   cm->DefineProperty
     ("LOCATION", cmProperty::SOURCE_FILE, 
@@ -475,17 +493,21 @@ void cmSourceFile::DefineProperties(cmake *cm)
 
   cm->DefineProperty
     ("MACOSX_PACKAGE_LOCATION", cmProperty::SOURCE_FILE, 
-     "Place a source file inside a Mac OS X bundle or framework.",
+     "Place a source file inside a Mac OS X bundle, CFBundle, or framework.",
      "Executable targets with the MACOSX_BUNDLE property set are built "
      "as Mac OS X application bundles on Apple platforms.  "
      "Shared library targets with the FRAMEWORK property set are built "
      "as Mac OS X frameworks on Apple platforms.  "
+     "Module library targets with the BUNDLE property set are built "
+     "as Mac OS X CFBundle bundles on Apple platforms.  "
      "Source files listed in the target with this property set will "
      "be copied to a directory inside the bundle or framework content "
      "folder specified by the property value.  "
      "For bundles the content folder is \"<name>.app/Contents\".  "
      "For frameworks the content folder is "
      "\"<name>.framework/Versions/<version>\".  "
+     "For cfbundles the content folder is "
+     "\"<name>.bundle/Contents\" (unless the extension is changed).  "
      "See the PUBLIC_HEADER, PRIVATE_HEADER, and RESOURCE target "
      "properties for specifying files meant for Headers, PrivateHeaders, "
      "or Resources directories.");

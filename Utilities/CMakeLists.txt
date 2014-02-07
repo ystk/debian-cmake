@@ -126,6 +126,7 @@ ADD_CUSTOM_COMMAND(
 
 INSTALL_FILES(${CMAKE_MAN_DIR}/man1 FILES ${MAN_FILES})
 INSTALL_FILES(${CMAKE_DOC_DIR} FILES ${HTML_FILES} ${TEXT_FILES})
+INSTALL(FILES cmake.m4 DESTINATION share/aclocal)
 
 # Drive documentation generation.
 ADD_CUSTOM_TARGET(documentation ALL DEPENDS ${DOC_FILES} ${CMake_BINARY_DIR}/Docs/cmake.txt )
@@ -151,10 +152,6 @@ if(BUILD_TESTING)
         ${CMAKE_CMAKE_COMMAND} -E chdir ${CMAKE_CURRENT_SOURCE_DIR}/xml
         ${LIBXML2_XMLLINT_EXECUTABLE} --valid --noout --nonet --path .
         ${HTML_FILES}
-        )
-    else()
-      add_test(CMake.HTML
-        ${LIBXML2_XMLLINT_EXECUTABLE} --valid --noout ${HTML_FILES}
         )
     endif()
   endif()

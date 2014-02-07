@@ -23,6 +23,7 @@
 #include <QList>
 #include <QStringList>
 #include <QMetaType>
+#include <QAtomicInt>
 
 class cmake;
 
@@ -78,7 +79,7 @@ public slots:
   void generate();
   /// set the property values
   void setProperties(const QCMakePropertyList&);
-  /// interrupt the configure or generate process
+  /// interrupt the configure or generate process (if connecting, make a direct connection)
   void interrupt();
   /// delete the cache in binary directory
   void deleteCache();
@@ -88,6 +89,10 @@ public slots:
   void setDebugOutput(bool);
   /// set whether to do suppress dev warnings
   void setSuppressDevWarnings(bool value);
+  /// set whether to run cmake with warnings about uninitialized variables
+  void setWarnUninitializedMode(bool value);
+  /// set whether to run cmake with warnings about unused variables
+  void setWarnUnusedMode(bool value);
 
 public:
   /// get the list of cache properties
@@ -129,15 +134,20 @@ signals:
 protected:
   cmake* CMakeInstance;
 
+  static bool interruptCallback(void*);
   static void progressCallback(const char* msg, float percent, void* cd);
   static void errorCallback(const char* msg, const char* title, 
                             bool&, void* cd);
   bool SuppressDevWarnings;
+  bool WarnUninitializedMode;
+  bool WarnUnusedMode;
+  bool WarnUnusedAllMode;
   QString SourceDirectory;
   QString BinaryDirectory;
   QString Generator;
   QStringList AvailableGenerators;
   QString CMakeExecutable;
+  QAtomicInt InterruptFlag;
 };
 
 #endif // __QCMake_h

@@ -37,20 +37,21 @@ protected:
   virtual int InitializeInternal();
   void CreateMenuLinks( cmOStringStream& str,
                         cmOStringStream& deleteStr);
-  int CompressFiles(const char* outFileName, const char* toplevel,
-    const std::vector<std::string>& files);
+  int PackageFiles();
   virtual const char* GetOutputExtension() { return ".exe"; }
   virtual const char* GetOutputPostfix() { return "win32"; }
 
   bool GetListOfSubdirectories(const char* dir,
     std::vector<std::string>& dirs);
 
+  enum cmCPackGenerator::CPackSetDestdirSupport SupportsSetDestdir() const;
+  virtual bool SupportsAbsoluteDestination() const;
   virtual bool SupportsComponentInstallation() const;
 
-  /// Produce a string that contains the NSIS code to describe a 
-  /// particular component. Any added macros will be emitted via 
+  /// Produce a string that contains the NSIS code to describe a
+  /// particular component. Any added macros will be emitted via
   /// macrosOut.
-  std::string 
+  std::string
   CreateComponentDescription(cmCPackComponent *component,
                              cmOStringStream& macrosOut);
 
@@ -66,14 +67,14 @@ protected:
                 (cmCPackComponent *component,
                  std::set<cmCPackComponent *>& visited);
 
-  /// Produce a string that contains the NSIS code to describe a 
+  /// Produce a string that contains the NSIS code to describe a
   /// particular component group, including its components. Any
   /// added macros will be emitted via macrosOut.
-  std::string 
+  std::string
   CreateComponentGroupDescription(cmCPackComponentGroup *group,
                                   cmOStringStream& macrosOut);
 
-  /// Translations any newlines found in the string into \r\n, so that the 
+  /// Translations any newlines found in the string into \\r\\n, so that the
   /// resulting string can be used within NSIS.
   static std::string TranslateNewlines(std::string str);
 };

@@ -22,7 +22,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 FIND_PATH(SDLIMAGE_INCLUDE_DIR SDL_image.h
@@ -39,8 +39,6 @@ FIND_PATH(SDLIMAGE_INCLUDE_DIR SDL_image.h
   /usr/local/include/SDL11 # FreeBSD ports
   /usr/include/SDL12
   /usr/include/SDL11
-  /usr/local/include
-  /usr/include
   /sw/include/SDL # Fink
   /sw/include
   /opt/local/include/SDL # DarwinPorts
@@ -60,16 +58,13 @@ FIND_LIBRARY(SDLIMAGE_LIBRARY
   PATHS
   ~/Library/Frameworks
   /Library/Frameworks
-  /usr/local
-  /usr
   /sw
   /opt/local
   /opt/csw
   /opt
 )
 
-SET(SDLIMAGE_FOUND "NO")
-IF(SDLIMAGE_LIBRARY AND SDLIMAGE_INCLUDE_DIR)
-  SET(SDLIMAGE_FOUND "YES")
-ENDIF(SDLIMAGE_LIBRARY AND SDLIMAGE_INCLUDE_DIR)
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(SDLIMAGE
+                                  REQUIRED_VARS SDLIMAGE_LIBRARY SDLIMAGE_INCLUDE_DIR)

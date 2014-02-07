@@ -66,7 +66,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 SET(SDL_SOUND_EXTRAS "" CACHE STRING "SDL_sound extra flags")
@@ -86,8 +86,6 @@ FIND_PATH(SDL_SOUND_INCLUDE_DIR SDL_sound.h
   /usr/local/include/SDL11 # FreeBSD ports
   /usr/include/SDL12
   /usr/include/SDL11
-  /usr/local/include
-  /usr/include
   /sw/include/SDL # Fink
   /sw/include
   /opt/local/include/SDL # DarwinPorts
@@ -106,15 +104,12 @@ FIND_LIBRARY(SDL_SOUND_LIBRARY
   $ENV{SDLDIR}/lib
   $ENV{SDLDIR}
   PATHS
-  /usr/local/lib
-  /usr/lib
   /sw/lib
   /opt/local/lib
   /opt/csw/lib
   /opt/lib
   )
 
-SET(SDL_SOUND_FOUND "NO")
 IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
 
   # CMake is giving me problems using TRY_COMPILE with the CMAKE_FLAGS
@@ -223,8 +218,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -246,8 +239,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -272,8 +263,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -294,8 +283,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -318,8 +305,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -342,8 +327,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -369,8 +352,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
          $ENV{SDLSOUNDDIR}
          $ENV{SDLDIR}/lib
          $ENV{SDLDIR}
-         /usr/local/lib
-         /usr/lib
          /sw/lib
          /opt/local/lib
          /opt/csw/lib
@@ -396,8 +377,6 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
            $ENV{SDLSOUNDDIR}
            $ENV{SDLDIR}/lib
            $ENV{SDLDIR}
-           /usr/local/lib
-           /usr/lib
            /sw/lib
            /opt/local/lib
            /opt/csw/lib
@@ -414,8 +393,9 @@ IF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
    ENDIF(NOT MY_RESULT)
 
    SET(SDL_SOUND_LIBRARIES "${SDL_SOUND_EXTRAS} ${SDL_SOUND_LIBRARIES_TMP}" CACHE INTERNAL "SDL_sound and dependent libraries")
-   SET(SDL_SOUND_FOUND "YES")
  ENDIF(SDL_FOUND AND SDL_SOUND_INCLUDE_DIR AND SDL_SOUND_LIBRARY)
 
- # MESSAGE("SDL_SOUND_LIBRARIES is ${SDL_SOUND_LIBRARIES}")
+INCLUDE(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
 
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(SDL_SOUND
+                                  REQUIRED_VARS SDL_SOUND_LIBRARIES SDL_SOUND_INCLUDE_DIR)

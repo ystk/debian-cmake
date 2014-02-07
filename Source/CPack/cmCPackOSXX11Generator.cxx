@@ -21,6 +21,7 @@
 
 #include <cmsys/SystemTools.hxx>
 #include <cmsys/Glob.hxx>
+#include <sys/stat.h>
 
 //----------------------------------------------------------------------
 cmCPackOSXX11Generator::cmCPackOSXX11Generator()
@@ -33,12 +34,10 @@ cmCPackOSXX11Generator::~cmCPackOSXX11Generator()
 }
 
 //----------------------------------------------------------------------
-int cmCPackOSXX11Generator::CompressFiles(const char* outFileName,
-  const char* toplevel,
-  const std::vector<std::string>& files)
+int cmCPackOSXX11Generator::PackageFiles()
 {
-  (void) files; // TODO: Fix api to not need files.
-  (void) toplevel; // TODO: Use toplevel
+  // TODO: Use toplevel ?
+  //       It is used! Is this an obsolete comment?
 
   const char* cpackPackageExecutables
     = this->GetOption("CPACK_PACKAGE_EXECUTABLES");
@@ -137,6 +136,32 @@ int cmCPackOSXX11Generator::CompressFiles(const char* outFileName,
     return 0;
     }
 
+  // Two of the files need to have execute permission, so ensure they do:
+  std::string runTimeScript = dir;
+  runTimeScript += "/";
+  runTimeScript += "RuntimeScript";
+
+  std::string appScriptName = appdir;
+  appScriptName += "/";
+  appScriptName += this->GetOption("CPACK_PACKAGE_FILE_NAME");
+
+  mode_t mode;
+  if (cmsys::SystemTools::GetPermissions(runTimeScript.c_str(), mode))
+    {
+    mode |= (S_IXUSR | S_IXGRP | S_IXOTH);
+    cmsys::SystemTools::SetPermissions(runTimeScript.c_str(), mode);
+    cmCPackLogger(cmCPackLog::LOG_OUTPUT, "Setting: " << runTimeScript
+      << " to permission: " << mode << std::endl);
+    }
+
+  if (cmsys::SystemTools::GetPermissions(appScriptName.c_str(), mode))
+    {
+    mode |= (S_IXUSR | S_IXGRP | S_IXOTH);
+    cmsys::SystemTools::SetPermissions(appScriptName.c_str(), mode);
+    cmCPackLogger(cmCPackLog::LOG_OUTPUT,  "Setting: " << appScriptName
+      << " to permission: " << mode << std::endl);
+    }
+
   std::string output;
   std::string tmpFile = this->GetOption("CPACK_TOPLEVEL_DIRECTORY");
   tmpFile += "/hdiutilOutput.log";
@@ -144,24 +169,26 @@ int cmCPackOSXX11Generator::CompressFiles(const char* outFileName,
   dmgCmd << "\"" << this->GetOption("CPACK_INSTALLER_PROGRAM_DISK_IMAGE")
          << "\" create -ov -format UDZO -srcfolder \"" 
          << diskImageDirectory.c_str() 
-         << "\" \"" << outFileName << "\"";
-  int retVal = 1;
+         << "\" \"" << packageFileNames[0] << "\"";
   cmCPackLogger(cmCPackLog::LOG_VERBOSE,
                 "Compress disk image using command: " 
                 << dmgCmd.str().c_str() << std::endl);
   // since we get random dashboard failures with this one
   // try running it more than once
-  int numTries = 4;
-  bool res;
+  int retVal = 1;
+  int numTries = 10;
+  bool res = false;
   while(numTries > 0)
     {
     res = cmSystemTools::RunSingleCommand(dmgCmd.str().c_str(), &output,
                                           &retVal, 0, 
                                           this->GeneratorVerbose, 0);
-    if(res && retVal)
+    if ( res && !retVal )
       {
       numTries = -1;
+      break;
       }
+    cmSystemTools::Delay(500);
     numTries--;
     }
   if ( !res || retVal )

@@ -9,7 +9,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the License for more information.
 #=============================================================================
-# (To distributed this file outside of CMake, substitute the full
+# (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
 INCLUDE(CMakeTestCompilerCommon)
@@ -92,4 +92,10 @@ ELSE(NOT CMAKE_Fortran_COMPILER_WORKS)
       )
     INCLUDE(${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeFortranCompiler.cmake)
   ENDIF(CMAKE_Fortran_COMPILER_FORCED)
+  IF(CMAKE_Fortran_SIZEOF_DATA_PTR)
+    FOREACH(f ${CMAKE_Fortran_ABI_FILES})
+      INCLUDE(${f})
+    ENDFOREACH()
+    UNSET(CMAKE_Fortran_ABI_FILES)
+  ENDIF()
 ENDIF(NOT CMAKE_Fortran_COMPILER_WORKS)

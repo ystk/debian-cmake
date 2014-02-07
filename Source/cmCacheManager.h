@@ -41,7 +41,8 @@ private:
     cmPropertyMap Properties;
     const char* GetProperty(const char*) const;
     void SetProperty(const char* property, const char* value);
-    void AppendProperty(const char* property, const char* value);
+    void AppendProperty(const char* property, const char* value,
+                        bool asString=false);
     bool Initialized;
     CacheEntry() : Value(""), Type(UNINITIALIZED), Initialized(false)
       {}
@@ -61,7 +62,8 @@ public:
     bool GetPropertyAsBool(const char*) const ;
     bool PropertyExists(const char*) const;
     void SetProperty(const char* property, const char* value);
-    void AppendProperty(const char* property, const char* value);
+    void AppendProperty(const char* property, const char* value,
+                        bool asString=false);
     void SetProperty(const char* property, bool value);
     const char* GetValue() const { return this->GetEntry().Value.c_str(); }
     bool GetValueAsBool() const;
@@ -138,10 +140,6 @@ public:
                          std::string& var,
                          std::string& value,
                          CacheEntryType& type);
-
-  static bool ParseEntry(const char* entry, 
-                         std::string& var,
-                         std::string& value);
 
   ///! Get a value from the cache given a key
   const char* GetCacheValue(const char* key) const;

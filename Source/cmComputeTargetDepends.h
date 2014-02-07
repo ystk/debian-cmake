@@ -21,6 +21,7 @@
 class cmComputeComponentGraph;
 class cmGlobalGenerator;
 class cmTarget;
+class cmTargetDependSet;
 
 /** \class cmComputeTargetDepends
  * \brief Compute global interdependencies among targets.
@@ -38,14 +39,15 @@ public:
   bool Compute();
 
   std::vector<cmTarget*> const& GetTargets() const { return this->Targets; }
-  void GetTargetDirectDepends(cmTarget* t, std::set<cmTarget*>& deps);
+  void GetTargetDirectDepends(cmTarget* t, cmTargetDependSet& deps);
 private:
   void CollectTargets();
   void CollectDepends();
   void CollectTargetDepends(int depender_index);
   void AddTargetDepend(int depender_index, const char* dependee_name,
                        bool linking);
-  void ComputeFinalDepends(cmComputeComponentGraph const& ccg);
+  void AddTargetDepend(int depender_index, cmTarget* dependee, bool linking);
+  bool ComputeFinalDepends(cmComputeComponentGraph const& ccg);
 
   cmGlobalGenerator* GlobalGenerator;
   bool DebugMode;
@@ -59,6 +61,7 @@ private:
   // top-level index corresponds to a depender whose dependencies are
   // listed.
   typedef cmGraphNodeList NodeList;
+  typedef cmGraphEdgeList EdgeList;
   typedef cmGraphAdjacencyList Graph;
   Graph InitialGraph;
   Graph FinalGraph;
@@ -67,7 +70,13 @@ private:
   // Deal with connected components.
   void DisplayComponents(cmComputeComponentGraph const& ccg);
   bool CheckComponents(cmComputeComponentGraph const& ccg);
-  void ComplainAboutBadComponent(cmComputeComponentGraph const& ccg, int c);
+  void ComplainAboutBadComponent(cmComputeComponentGraph const& ccg, int c,
+                                 bool strong = false);
+
+  std::vector<int> ComponentHead;
+  std::vector<int> ComponentTail;
+  bool IntraComponent(std::vector<int> const& cmap, int c, int i, int* head,
+                      std::set<int>& emitted, std::set<int>& visited);
 };
 
 #endif

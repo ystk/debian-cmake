@@ -59,10 +59,10 @@ class cmTarget
 public:
   cmTarget();
   enum TargetType { EXECUTABLE, STATIC_LIBRARY,
-                    SHARED_LIBRARY, MODULE_LIBRARY, UTILITY, GLOBAL_TARGET,
-                    INSTALL_FILES, INSTALL_PROGRAMS, INSTALL_DIRECTORY,
+                    SHARED_LIBRARY, MODULE_LIBRARY,
+                    OBJECT_LIBRARY, UTILITY, GLOBAL_TARGET,
                     UNKNOWN_LIBRARY};
-  static const char* TargetTypeNames[];
+  static const char* GetTargetTypeName(TargetType targetType);
   enum CustomCommandType { PRE_BUILD, PRE_LINK, POST_BUILD };
 
   /**
@@ -117,6 +117,10 @@ public:
    */
   std::vector<cmSourceFile*> const& GetSourceFiles();
   void AddSourceFile(cmSourceFile* sf);
+  std::vector<std::string> const& GetObjectLibraries() const
+    {
+    return this->ObjectLibraries;
+    }
 
   /** Get sources that must be built before the given source.  */
   std::vector<cmSourceFile*> const* GetSourceDepends(cmSourceFile* sf);
@@ -224,7 +228,7 @@ public:
 
   ///! Set/Get a property of this target file
   void SetProperty(const char *prop, const char *value);
-  void AppendProperty(const char* prop, const char* value);
+  void AppendProperty(const char* prop, const char* value,bool asString=false);
   const char *GetProperty(const char *prop);
   const char *GetProperty(const char *prop, cmProperty::ScopeType scope);
   bool GetPropertyAsBool(const char *prop);
@@ -326,7 +330,7 @@ public:
    */
   bool FindSourceFiles();
 
-  ///! Return the prefered linker language for this target
+  ///! Return the preferred linker language for this target
   const char* GetLinkerLanguage(const char* config = 0);
 
   ///! Return the rule variable used to create this type of target,
@@ -342,6 +346,9 @@ public:
 
   /** Get the name of the pdb file for the target.  */
   std::string GetPDBName(const char* config=0);
+
+  /** Whether this library has soname enabled and platform supports it.  */
+  bool HasSOName(const char* config);
 
   /** Get the soname of the target.  Allowed only for a shared library.  */
   std::string GetSOName(const char* config);
@@ -369,6 +376,14 @@ public:
                           std::string& impName,
                           std::string& pdbName, const char* config);
 
+  /** Does this target have a GNU implib to convert to MS format?  */
+  bool HasImplibGNUtoMS();
+
+  /** Convert the given GNU import library name (.dll.a) to a name with a new
+      extension (.lib or ${CMAKE_IMPORT_LIBRARY_SUFFIX}).  */
+  bool GetImplibGNUtoMS(std::string const& gnuName, std::string& out,
+                        const char* newExt = 0);
+
   /** Add the target output files to the global generator manifest.  */
   void GenerateTargetManifest(const char* config);
 
@@ -395,9 +410,6 @@ public:
 
   // Define the properties
   static void DefineProperties(cmake *cm);
-
-  // Compute the OBJECT_FILES property only when requested
-  void ComputeObjectFiles();
 
   /** Get the macro to define when building sources in this target.
       If no macro should be defined null is returned.  */
@@ -430,6 +442,9 @@ public:
       Apple.  */
   bool IsFrameworkOnApple();
 
+  /** Return whether this target is a CFBundle (plugin) on Apple.  */
+  bool IsCFBundleOnApple();
+
   /** Return whether this target is an executable Bundle on Apple.  */
   bool IsAppBundleOnApple();
 
@@ -442,6 +457,29 @@ public:
 
   /** Get a build-tree directory in which to place target support files.  */
   std::string GetSupportDirectory() const;
+
+  /** Return whether this target uses the default value for its output
+      directory.  */
+  bool UsesDefaultOutputDir(const char* config, bool implib);
+
+  /** Get the include directories for this target.  */
+  std::vector<std::string> GetIncludeDirectories();
+
+  /** Append to @a base the mac content directory and return it. */
+  std::string BuildMacContentDirectory(const std::string& base,
+                                       const char* config = 0,
+                                       bool includeMacOS = true);
+
+  /** @return the mac content directory for this target. */
+  std::string GetMacContentDirectory(const char* config = 0,
+                                     bool implib = false,
+                                     bool includeMacOS = true);
+
+  /** @return whether this target have a well defined output file name. */
+  bool HaveWellDefinedOutputFiles();
+
+  /** @return the Mac framework directory without the base. */
+  std::string GetFrameworkDirectory(const char* config = 0);
 
 private:
   /**
@@ -534,6 +572,7 @@ private:
   std::vector<cmCustomCommand> PostBuildCommands;
   TargetType TargetTypeValue;
   std::vector<cmSourceFile*> SourceFiles;
+  std::vector<std::string> ObjectLibraries;
   LinkLibraryVectorType LinkLibraries;
   LinkLibraryVectorType PrevLinkedLibraries;
   bool LinkLibrariesAnalyzed;
@@ -550,12 +589,13 @@ private:
   cmPropertyMap Properties;
   LinkLibraryVectorType OriginalLinkLibraries;
   bool DLLPlatform;
+  bool IsApple;
   bool IsImportedTarget;
 
   // Cache target output paths for each configuration.
   struct OutputInfo;
   OutputInfo const* GetOutputInfo(const char* config);
-  void ComputeOutputDir(const char* config, bool implib, std::string& out);
+  bool ComputeOutputDir(const char* config, bool implib, std::string& out);
 
   // Cache import information from properties for each configuration.
   struct ImportInfo;
@@ -574,6 +614,8 @@ private:
 
   void MaybeInvalidatePropertyCache(const char* prop);
 
+  void ProcessSourceExpression(std::string const& expr);
+
   // The cmMakefile instance that owns this target.  This should
   // always be set.
   cmMakefile* Makefile;
@@ -588,6 +630,12 @@ private:
   cmTargetInternalPointer Internal;
 
   void ConstructSourceFileFlags();
+  void ComputeVersionedName(std::string& vName,
+                            std::string const& prefix,
+                            std::string const& base,
+                            std::string const& suffix,
+                            std::string const& name,
+                            const char* version);
 };
 
 typedef std::map<cmStdString,cmTarget> cmTargets;

@@ -59,14 +59,17 @@ UpdateType: @UPDATE_TYPE@
 # Compiler info
 Compiler: @CMAKE_CXX_COMPILER@
 
-# Dynamic analysis and coverage
+# Dynamic analysis (MemCheck)
 PurifyCommand: @PURIFYCOMMAND@
 ValgrindCommand: @VALGRIND_COMMAND@
 ValgrindCommandOptions: @VALGRIND_COMMAND_OPTIONS@
 MemoryCheckCommand: @MEMORYCHECK_COMMAND@
 MemoryCheckCommandOptions: @MEMORYCHECK_COMMAND_OPTIONS@
 MemoryCheckSuppressionFile: @MEMORYCHECK_SUPPRESSIONS_FILE@
+
+# Coverage
 CoverageCommand: @COVERAGE_COMMAND@
+CoverageExtraFlags: @COVERAGE_EXTRA_FLAGS@
 
 # Cluster commands
 SlurmBatchCommand: @SLURM_SBATCH_COMMAND@
@@ -84,3 +87,7 @@ CurlOptions: @CTEST_CURL_OPTIONS@
 # warning, if you add new options here that have to do with submit,
 # you have to update cmCTestSubmitCommand.cxx
 
+# For CTest submissions that timeout, these options
+# specify behavior for retrying the submission
+CTestSubmitRetryDelay: @CTEST_SUBMIT_RETRY_DELAY@
+CTestSubmitRetryCount: @CTEST_SUBMIT_RETRY_COUNT@
