@@ -14,31 +14,105 @@
 #include "cmLocalVisualStudio10Generator.h"
 #include "cmMakefile.h"
 #include "cmSourceFile.h"
+#include "cmVisualStudioSlnData.h"
+#include "cmVisualStudioSlnParser.h"
 #include "cmake.h"
 
+static const char vs10Win32generatorName[] = "Visual Studio 10";
+static const char vs10Win64generatorName[] = "Visual Studio 10 Win64";
+static const char vs10IA64generatorName[] = "Visual Studio 10 IA64";
 
-cmGlobalVisualStudio10Generator::cmGlobalVisualStudio10Generator()
+class cmGlobalVisualStudio10Generator::Factory
+  : public cmGlobalGeneratorFactory
+{
+public:
+  virtual cmGlobalGenerator* CreateGlobalGenerator(const char* name) const {
+    if(!strcmp(name, vs10Win32generatorName))
+      {
+      return new cmGlobalVisualStudio10Generator(
+        name, NULL, NULL);
+      }
+    if(!strcmp(name, vs10Win64generatorName))
+      {
+      return new cmGlobalVisualStudio10Generator(
+        name, "x64", "CMAKE_FORCE_WIN64");
+      }
+    if(!strcmp(name, vs10IA64generatorName))
+      {
+      return new cmGlobalVisualStudio10Generator(
+        name, "Itanium", "CMAKE_FORCE_IA64");
+      }
+    return 0;
+  }
+
+  virtual void GetDocumentation(cmDocumentationEntry& entry) const {
+    entry.Name = "Visual Studio 10";
+    entry.Brief = "Generates Visual Studio 10 (2010) project files.";
+    entry.Full =
+      "It is possible to append a space followed by the platform name "
+      "to create project files for a specific target platform. E.g. "
+      "\"Visual Studio 10 Win64\" will create project files for "
+      "the x64 processor; \"Visual Studio 10 IA64\" for Itanium.";
+  }
+
+  virtual void GetGenerators(std::vector<std::string>& names) const {
+    names.push_back(vs10Win32generatorName);
+    names.push_back(vs10Win64generatorName);
+    names.push_back(vs10IA64generatorName); }
+};
+
+//----------------------------------------------------------------------------
+cmGlobalGeneratorFactory* cmGlobalVisualStudio10Generator::NewFactory()
+{
+  return new Factory;
+}
+
+//----------------------------------------------------------------------------
+cmGlobalVisualStudio10Generator::cmGlobalVisualStudio10Generator(
+  const char* name, const char* platformName,
+  const char* additionalPlatformDefinition)
+  : cmGlobalVisualStudio8Generator(name, platformName,
+                                   additionalPlatformDefinition)
 {
   this->FindMakeProgramFile = "CMakeVS10FindMake.cmake";
   std::string vc10Express;
   this->ExpressEdition = cmSystemTools::ReadRegistryValue(
     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VCExpress\\10.0\\Setup\\VC;"
     "ProductDir", vc10Express, cmSystemTools::KeyWOW64_32);
+  this->MasmEnabled = false;
+}
+
+//----------------------------------------------------------------------------
+bool
+cmGlobalVisualStudio10Generator::SetGeneratorToolset(std::string const& ts)
+{
+  this->PlatformToolset = ts;
+  return true;
 }
 
 //----------------------------------------------------------------------------
 void cmGlobalVisualStudio10Generator::AddPlatformDefinitions(cmMakefile* mf)
 {
-  mf->AddDefinition("MSVC10", "1");
-  mf->AddDefinition("MSVC_C_ARCHITECTURE_ID", "X86");
-  mf->AddDefinition("MSVC_CXX_ARCHITECTURE_ID", "X86");
+  cmGlobalVisualStudio8Generator::AddPlatformDefinitions(mf);
+  if(!this->PlatformToolset.empty())
+    {
+    mf->AddDefinition("CMAKE_VS_PLATFORM_TOOLSET",
+                      this->PlatformToolset.c_str());
+    }
 }
 
 //----------------------------------------------------------------------------
 void cmGlobalVisualStudio10Generator::WriteSLNHeader(std::ostream& fout)
 {
   fout << "Microsoft Visual Studio Solution File, Format Version 11.00\n";
-  fout << "# Visual Studio 2010\n";
+  if (this->ExpressEdition)
+    {
+    fout << "# Visual C++ Express 2010\n";
+    }
+  else
+    {
+    fout << "# Visual Studio 2010\n";
+    }
 }
 
 ///! Create a local generator appropriate to this Global Generator
@@ -85,18 +159,26 @@ void cmGlobalVisualStudio10Generator::Generate()
 
 //----------------------------------------------------------------------------
 void cmGlobalVisualStudio10Generator
-::GetDocumentation(cmDocumentationEntry& entry) const
-{
-  entry.Name = this->GetName();
-  entry.Brief = "Generates Visual Studio 10 project files.";
-  entry.Full = "";
-}
-
-//----------------------------------------------------------------------------
-void cmGlobalVisualStudio10Generator
-::EnableLanguage(std::vector<std::string>const &  lang, 
+::EnableLanguage(std::vector<std::string>const &  lang,
                  cmMakefile *mf, bool optional)
 {
+  if(this->PlatformName == "Itanium" || this->PlatformName == "x64")
+    {
+    if(this->IsExpressEdition() && !this->Find64BitTools(mf))
+      {
+      return;
+      }
+    }
+
+  for(std::vector<std::string>::const_iterator it = lang.begin();
+      it != lang.end(); ++it)
+    {
+    if(*it == "ASM_MASM")
+      {
+      this->MasmEnabled = true;
+      }
+    }
+
   cmGlobalVisualStudio8Generator::EnableLanguage(lang, mf, optional);
 }
 
@@ -146,12 +228,12 @@ std::string cmGlobalVisualStudio10Generator::GetUserMacrosRegKeyBase()
 
 std::string cmGlobalVisualStudio10Generator
 ::GenerateBuildCommand(const char* makeProgram,
-                       const char *projectName, 
+                       const char *projectName, const char *projectDir,
                        const char* additionalOptions, const char *targetName,
                        const char* config, bool ignoreErrors, bool fast)
 {
   // now build the test
-  std::string makeCommand 
+  std::string makeCommand
     = cmSystemTools::ConvertToOutputPath(makeProgram);
   std::string lowerCaseCommand = makeCommand;
   cmSystemTools::LowerCase(lowerCaseCommand);
@@ -161,7 +243,8 @@ std::string cmGlobalVisualStudio10Generator
       lowerCaseCommand.find("VCExpress") != std::string::npos)
     {
     return cmGlobalVisualStudio7Generator::GenerateBuildCommand(makeProgram,
-      projectName, additionalOptions, targetName, config, ignoreErrors, fast);
+      projectName, projectDir, additionalOptions, targetName, config,
+      ignoreErrors, fast);
     }
 
   // Otherwise, assume MSBuild command line, and construct accordingly.
@@ -177,7 +260,7 @@ std::string cmGlobalVisualStudio10Generator
   if(!targetName || strlen(targetName) == 0)
     {
     targetName = "ALL_BUILD";
-    }    
+    }
   bool clean = false;
   if ( targetName && strcmp(targetName, "clean") == 0 )
     {
@@ -189,9 +272,38 @@ std::string cmGlobalVisualStudio10Generator
     }
   else
     {
+    std::string targetProject(targetName);
+    targetProject += ".vcxproj";
+    if (targetProject.find('/') == std::string::npos)
+      {
+      // it might be in a subdir
+      cmVisualStudioSlnParser parser;
+      cmSlnData slnData;
+      std::string slnFile;
+      if (projectDir && *projectDir)
+        {
+        slnFile = projectDir;
+        slnFile += '/';
+        slnFile += projectName;
+        }
+      else
+        {
+        slnFile = projectName;
+        }
+      if (parser.ParseFile(slnFile + ".sln", slnData,
+                           cmVisualStudioSlnParser::DataGroupProjects))
+        {
+        if (cmSlnProjectEntry const* proj =
+            slnData.GetProjectByName(targetName))
+          {
+          targetProject = proj->GetRelativePath();
+          cmSystemTools::ConvertToUnixSlashes(targetProject);
+          }
+        }
+      }
     makeCommand += " ";
-    makeCommand += targetName;
-    makeCommand += ".vcxproj ";
+    makeCommand += targetProject;
+    makeCommand += " ";
     }
   makeCommand += "/p:Configuration=";
   if(config && strlen(config))
@@ -202,6 +314,8 @@ std::string cmGlobalVisualStudio10Generator
     {
     makeCommand += "Debug";
     }
+  makeCommand += " /p:VisualStudioVersion=";
+  makeCommand += this->GetIDEVersion();
   if ( additionalOptions )
     {
     makeCommand += " ";

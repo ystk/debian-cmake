@@ -1,0 +1,29 @@
+From: Modestas Vainius <modax@debian.org>
+Subject: amd64/ppc64 kernels might be running on 32bit system
+Origin: vendor
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718290
+
+On biarch architecture, CMAKE_SYSTEM_PROCESSOR might be a 64bit one while the
+system 32bit one. Take this into consideration while looking for Java library
+directory.
+
+--- a/Modules/FindJNI.cmake
++++ b/Modules/FindJNI.cmake
+@@ -33,7 +33,7 @@ macro(java_append_library_directories _v
+     # 1.6.0_18 + icedtea patches. However, it would be much better to base the
+     # guess on the first part of the GNU config.guess platform triplet.
+     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+-        set(_java_libarch "amd64")
++        set(_java_libarch "amd64" "i386")
+     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^i.86$")
+         set(_java_libarch "i386")
+     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^alpha")
+@@ -46,7 +46,7 @@ macro(java_append_library_directories _v
+         # endianess of the underlying system.
+         set(_java_libarch "${CMAKE_SYSTEM_PROCESSOR}" "mips" "mipsel" "mipseb")
+     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
+-        set(_java_libarch "ppc64")
++        set(_java_libarch "ppc64" "ppc")
+     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)")
+         set(_java_libarch "ppc")
+     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^sparc")

@@ -14,12 +14,15 @@ if [ ${FLAVOR} != emacs ]; then
   echo install/${PACKAGE}: Byte-compiling for ${FLAVOR}
 
   install -m 755 -d ${ELCDIR}
-  cd ${ELDIR}
-  cp ${ELFILE} ${ELCDIR}
+
+  # Source file symlink (emacsen policy 5C)
+  ln -s "${ELDIR}/${ELFILE}" "${ELCDIR}/${ELFILE}"
+
+  # Compile cmake-mode.el
   cd ${ELCDIR}
   cat << EOF > path.el
 (setq load-path (cons "." load-path) byte-compile-warnings nil)
 EOF
   ${FLAVOR} ${FLAGS} ${ELFILE}
-  rm -f ${ELFILE} path.el
+  rm -f path.el
 fi

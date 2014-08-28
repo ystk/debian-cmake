@@ -68,6 +68,12 @@ public:
     CMP0018, ///< Ignore language flags for shared libs, and adhere to
     /// POSITION_INDEPENDENT_CODE property and *_COMPILE_OPTIONS_PI{E,C}
     /// instead.
+    CMP0019, ///< No variable re-expansion in include and link info
+    CMP0020, ///< Automatically link Qt executables to qtmain target
+    CMP0021, ///< Fatal error on relative paths in INCLUDE_DIRECTORIES
+    /// target property
+    CMP0022, ///< INTERFACE_LINK_LIBRARIES defines the link interface
+    CMP0023, ///< Disallow mixing keyword and plain tll signatures
 
     /** \brief Always the last entry.
      *

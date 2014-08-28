@@ -3,9 +3,9 @@ set -e
 
 FLAVOR=$1
 PACKAGE=cmake-data
-ELCFILE=cmake-mode.elc
+ELCDIR=/usr/share/${FLAVOR}/site-lisp/${PACKAGE}
 
 if [ ${FLAVOR} != emacs ]; then
   echo remove/${PACKAGE}: Purging byte-compiled files for ${FLAVOR}
-  rm -f /usr/share/${FLAVOR}/site-lisp/${ELCFILE}
+  rm -rf "${ELCDIR}"
 fi

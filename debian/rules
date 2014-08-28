@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-export DEB_CPPFLAGS_MAINT_APPEND := $(shell dpkg-buildflags --get CPPFLAGS)
+export DEB_CXXFLAGS_MAINT_APPEND := $(shell dpkg-buildflags --get CPPFLAGS)
 export DEB_CFLAGS_MAINT_APPEND := $(shell dpkg-buildflags --get CPPFLAGS)
 
 ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -22,13 +22,11 @@ $(BUILD_FLAGS_FILE) verify-build-flags:
 	$(call $(flag_action),CMAKE_USE_RELATIVE_PATHS,ON,"Use relative paths")
 	$(call $(flag_action),CMAKE_VERBOSE_MAKEFILE,ON,"Verbose build")
 	$(call $(flag_action),CMAKE_C_FLAGS,"$(CFLAGS)","C flags")
-	$(call $(flag_action),CMAKE_CXX_FLAGS,"$(CFLAGS)","C++ flags")
+	$(call $(flag_action),CMAKE_CXX_FLAGS,"$(CXXFLAGS)","C++ flags")
 	$(call $(flag_action),CMAKE_SKIP_BOOTSTRAP_TEST,ON,"Skip BootstrapTest")
 	$(call $(flag_action),BUILD_CursesDialog,ON,"Build curses GUI")
 	$(call $(flag_action),BUILD_QtDialog,ON,"Build Qt4 GUI")
 #	$(call $(flag_action),BUILD_DOCUMENTATION,ON)
-	$(call $(flag_action),CMAKE_USE_SYSTEM_LIBARCHIVE,ON)
-	$(call $(flag_action),CTEST_USE_XMLRPC,ON)
 
 $(BUILD_FLAGS_FILE): flag_action := set_build_flag
 verify-build-flags: flag_action := verify_build_flag
@@ -37,7 +35,7 @@ verify-build-flags: flag_action := verify_build_flag
 override_dh_auto_configure: $(BUILD_FLAGS_FILE)
 	rm -rf Build && mkdir -p Build
 	cd Build && ../bootstrap --prefix=/usr --docdir=/share/doc/cmake --mandir=/share/man \
-	                         --init=../$(BUILD_FLAGS_FILE) --system-libs $(CONFIGURE_PARALLEL) \
+	                         --init=../$(BUILD_FLAGS_FILE) --system-libs \
 	                         $(BOOTSTRAP_PARALLEL) --verbose
 
 override_dh_auto_test:
@@ -51,6 +49,6 @@ override_dh_installdocs:
 	dh_installdocs --link-doc=cmake-data
 
 %:
-	dh $@ --parallel --builddirectory=Build --dbg-package=cmake-dbg
+	dh $@ --with=bash-completion --parallel --builddirectory=Build --dbg-package=cmake-dbg
 
 .PHONY: override_dh_auto_configure override_dh_auto_clean
