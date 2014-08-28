@@ -36,8 +36,6 @@ cmNinjaNormalTargetGenerator(cmTarget* target)
   , TargetNamePDB()
   , TargetLinkLanguage(0)
 {
-  cmOSXBundleGenerator::PrepareTargetProperties(target);
-
   this->TargetLinkLanguage = target->GetLinkerLanguage(this->GetConfigName());
   if (target->GetType() == cmTarget::EXECUTABLE)
     target->GetExecutableNames(this->TargetNameOut,
@@ -61,7 +59,6 @@ cmNinjaNormalTargetGenerator(cmTarget* target)
     }
 
   this->OSXBundleGenerator = new cmOSXBundleGenerator(target,
-                                                      this->TargetNameOut,
                                                       this->GetConfigName());
   this->OSXBundleGenerator->SetMacContentFolders(&this->MacContentFolders);
 }
@@ -74,7 +71,8 @@ cmNinjaNormalTargetGenerator::~cmNinjaNormalTargetGenerator()
 void cmNinjaNormalTargetGenerator::Generate()
 {
   if (!this->TargetLinkLanguage) {
-    cmSystemTools::Error("CMake can not determine linker language for target:",
+    cmSystemTools::Error("CMake can not determine linker language for "
+                         "target: ",
                          this->GetTarget()->GetName());
     return;
   }
@@ -153,7 +151,7 @@ cmNinjaNormalTargetGenerator
   cmTarget::TargetType targetType = this->GetTarget()->GetType();
   std::string ruleName = this->LanguageLinkerRule();
   if (useResponseFile)
-    ruleName += "_RSPFILE";
+    ruleName += "_RSP_FILE";
 
   // Select whether to use a response file for objects.
   std::string rspfile;
@@ -168,20 +166,29 @@ cmNinjaNormalTargetGenerator
     std::string responseFlag;
     if (!useResponseFile) {
       vars.Objects = "$in";
-      vars.LinkLibraries = "$LINK_LIBRARIES";
+      vars.LinkLibraries = "$LINK_PATH $LINK_LIBRARIES";
     } else {
-        // handle response file
-        std::string cmakeLinkVar = std::string("CMAKE_") +
-                        this->TargetLinkLanguage + "_RESPONSE_FILE_LINK_FLAG";
+        std::string cmakeVarLang = "CMAKE_";
+        cmakeVarLang += this->TargetLinkLanguage;
+
+        // build response file name
+        std::string cmakeLinkVar =  cmakeVarLang + "_RESPONSE_FILE_LINK_FLAG";
         const char * flag = GetMakefile()->GetDefinition(cmakeLinkVar.c_str());
         if(flag) {
           responseFlag = flag;
         } else {
           responseFlag = "@";
         }
-        rspfile = "$out.rsp";
+        rspfile = "$RSP_FILE";
         responseFlag += rspfile;
-        rspcontent = "$in $LINK_LIBRARIES";
+
+        // build response file content
+        std::string linkOptionVar = cmakeVarLang;
+        linkOptionVar += "_COMPILER_LINKER_OPTION_FLAG_";
+        linkOptionVar += cmTarget::GetTargetTypeName(targetType);
+        const std::string linkOption =
+                GetMakefile()->GetSafeDefinition(linkOptionVar.c_str());
+        rspcontent = "$in_newline "+linkOption+" $LINK_PATH $LINK_LIBRARIES";
         vars.Objects = responseFlag.c_str();
         vars.LinkLibraries = "";
     }
@@ -258,7 +265,8 @@ cmNinjaNormalTargetGenerator
                                         rspcontent);
   }
 
-  if (this->TargetNameOut != this->TargetNameReal) {
+  if (this->TargetNameOut != this->TargetNameReal &&
+    !this->GetTarget()->IsFrameworkOnApple()) {
     std::string cmakeCommand =
       this->GetLocalGenerator()->ConvertToOutputFormat(
         this->GetMakefile()->GetRequiredDefinition("CMAKE_COMMAND"),
@@ -374,24 +382,32 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
   if (this->GetTarget()->IsAppBundleOnApple())
     {
     // Create the app bundle
-    std::string outpath;
+    std::string outpath =
+      this->GetTarget()->GetDirectory(this->GetConfigName());
     this->OSXBundleGenerator->CreateAppBundle(this->TargetNameOut, outpath);
 
     // Calculate the output path
-    targetOutput = outpath + this->TargetNameOut;
+    targetOutput = outpath;
+    targetOutput += "/";
+    targetOutput += this->TargetNameOut;
     targetOutput = this->ConvertToNinjaPath(targetOutput.c_str());
-    targetOutputReal = outpath + this->TargetNameReal;
+    targetOutputReal = outpath;
+    targetOutputReal += "/";
+    targetOutputReal += this->TargetNameReal;
     targetOutputReal = this->ConvertToNinjaPath(targetOutputReal.c_str());
     }
   else if (this->GetTarget()->IsFrameworkOnApple())
     {
     // Create the library framework.
-    this->OSXBundleGenerator->CreateFramework(this->TargetNameOut);
+    std::string outpath =
+      this->GetTarget()->GetDirectory(this->GetConfigName());
+    this->OSXBundleGenerator->CreateFramework(this->TargetNameOut, outpath);
     }
   else if(this->GetTarget()->IsCFBundleOnApple())
     {
     // Create the core foundation bundle.
-    std::string outpath;
+    std::string outpath =
+      this->GetTarget()->GetDirectory(this->GetConfigName());
     this->OSXBundleGenerator->CreateCFBundle(this->TargetNameOut, outpath);
     }
 
@@ -420,12 +436,20 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
   cmNinjaDeps explicitDeps = this->GetObjects();
   cmNinjaDeps implicitDeps = this->ComputeLinkDeps();
 
+  std::string frameworkPath;
+  std::string linkPath;
   this->GetLocalGenerator()->GetTargetFlags(vars["LINK_LIBRARIES"],
                                             vars["FLAGS"],
                                             vars["LINK_FLAGS"],
-                                            *this->GetTarget());
+                                            frameworkPath,
+                                            linkPath,
+                                            this->GetGeneratorTarget());
 
   this->AddModuleDefinitionFlag(vars["LINK_FLAGS"]);
+  vars["LINK_FLAGS"] = cmGlobalNinjaGenerator
+                        ::EncodeLiteral(vars["LINK_FLAGS"]);
+
+  vars["LINK_PATH"] = frameworkPath + linkPath;
 
   // Compute architecture specific link flags.  Yes, these go into a different
   // variable for executables, probably due to a mistake made when duplicating
@@ -434,7 +458,7 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
                                ? vars["FLAGS"]
                                : vars["ARCH_FLAGS"]);
   this->GetLocalGenerator()->AddArchitectureFlags(flags,
-                             this->GetTarget(),
+                             this->GetGeneratorTarget(),
                              this->TargetLinkLanguage,
                              this->GetConfigName());
   if (targetType == cmTarget::EXECUTABLE) {
@@ -459,25 +483,16 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
     }
   }
 
-  std::string path;
   if (!this->TargetNameImport.empty()) {
-    path = this->GetLocalGenerator()->ConvertToOutputFormat(
-                    targetOutputImplib.c_str(), cmLocalGenerator::SHELL);
-    vars["TARGET_IMPLIB"] = path;
-    EnsureParentDirectoryExists(path);
+    const std::string impLibPath = this->GetLocalGenerator()
+      ->ConvertToOutputFormat(targetOutputImplib.c_str(),
+                              cmLocalGenerator::SHELL);
+    vars["TARGET_IMPLIB"] = impLibPath;
+    EnsureParentDirectoryExists(impLibPath);
   }
 
   cmMakefile* mf = this->GetMakefile();
-  if (mf->GetDefinition("MSVC_C_ARCHITECTURE_ID") ||
-      mf->GetDefinition("MSVC_CXX_ARCHITECTURE_ID"))
-    {
-    path = this->GetTargetPDB();
-    vars["TARGET_PDB"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-                          ConvertToNinjaPath(path.c_str()).c_str(),
-                          cmLocalGenerator::SHELL);
-    EnsureParentDirectoryExists(path);
-    }
-  else
+  if (!this->SetMsvcTargetPdbVariable(vars))
     {
     // It is common to place debug symbols at a specific place,
     // so we need a plain target name in the rule available.
@@ -494,10 +509,10 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
 
   if (mf->IsOn("CMAKE_COMPILER_IS_MINGW"))
     {
-    path = GetTarget()->GetSupportDirectory();
-    vars["OBJECT_DIR"] = ConvertToNinjaPath(path.c_str());
-    EnsureDirectoryExists(path);
-    // ar.exe can't handle backslashes in rsp files (implictly used by gcc)
+    const std::string objPath = GetTarget()->GetSupportDirectory();
+    vars["OBJECT_DIR"] = ConvertToNinjaPath(objPath.c_str());
+    EnsureDirectoryExists(objPath);
+    // ar.exe can't handle backslashes in rsp files (implicitly used by gcc)
     std::string& linkLibraries = vars["LINK_LIBRARIES"];
     std::replace(linkLibraries.begin(), linkLibraries.end(), '\\', '/');
     }
@@ -527,10 +542,10 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
   // If we have any PRE_LINK commands, we need to go back to HOME_OUTPUT for
   // the link commands.
   if (!preLinkCmdLines.empty()) {
-    path = this->GetLocalGenerator()->ConvertToOutputFormat(
-      this->GetMakefile()->GetHomeOutputDirectory(),
-      cmLocalGenerator::SHELL);
-    preLinkCmdLines.push_back("cd " + path);
+    const std::string homeOutDir = this->GetLocalGenerator()
+      ->ConvertToOutputFormat(this->GetMakefile()->GetHomeOutputDirectory(),
+                              cmLocalGenerator::SHELL);
+    preLinkCmdLines.push_back("cd " + homeOutDir);
   }
 
   vars["PRE_LINK"] =
@@ -548,37 +563,54 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
 
   int linkRuleLength = this->GetGlobalGenerator()->
                                  GetRuleCmdLength(this->LanguageLinkerRule());
+
+  int commandLineLengthLimit = 1;
+  const char* forceRspFile = "CMAKE_NINJA_FORCE_RESPONSE_FILE";
+  if (!this->GetMakefile()->IsDefinitionSet(forceRspFile) &&
+      cmSystemTools::GetEnv(forceRspFile) == 0) {
 #ifdef _WIN32
-  int commandLineLengthLimit = 8000 - linkRuleLength;
+    commandLineLengthLimit = 8000 - linkRuleLength;
 #elif defined(__linux) || defined(__APPLE__)
-  // for instance ARG_MAX is 2096152 on Ubuntu or 262144 on Mac
-  int commandLineLengthLimit = ((int)sysconf(_SC_ARG_MAX))
-                                    - linkRuleLength - 1000;
+    // for instance ARG_MAX is 2096152 on Ubuntu or 262144 on Mac
+    commandLineLengthLimit = ((int)sysconf(_SC_ARG_MAX))-linkRuleLength-1000;
 #else
-  int commandLineLengthLimit = -1;
+    (void)linkRuleLength;
+    commandLineLengthLimit = -1;
 #endif
+  }
+
+  //Get the global generator as we are going to be call WriteBuild numerous
+  //times in the following section
+  cmGlobalNinjaGenerator* globalGenerator = this->GetGlobalGenerator();
+
+
+  const std::string rspfile = std::string
+                              (cmake::GetCMakeFilesDirectoryPostSlash()) +
+                              this->GetTarget()->GetName() + ".rsp";
 
   // Write the build statement for this target.
-  cmGlobalNinjaGenerator::WriteBuild(this->GetBuildFileStream(),
-                                     comment.str(),
-                                     this->LanguageLinkerRule(),
-                                     outputs,
-                                     explicitDeps,
-                                     implicitDeps,
-                                     emptyDeps,
-                                     vars,
-                                     commandLineLengthLimit);
+  globalGenerator->WriteBuild(this->GetBuildFileStream(),
+                              comment.str(),
+                              this->LanguageLinkerRule(),
+                              outputs,
+                              explicitDeps,
+                              implicitDeps,
+                              emptyDeps,
+                              vars,
+                              rspfile,
+                              commandLineLengthLimit);
 
-  if (targetOutput != targetOutputReal) {
+  if (targetOutput != targetOutputReal &&
+    !this->GetTarget()->IsFrameworkOnApple()) {
     if (targetType == cmTarget::EXECUTABLE) {
-      cmGlobalNinjaGenerator::WriteBuild(this->GetBuildFileStream(),
+      globalGenerator->WriteBuild(this->GetBuildFileStream(),
                                   "Create executable symlink " + targetOutput,
-                                         "CMAKE_SYMLINK_EXECUTABLE",
-                                         cmNinjaDeps(1, targetOutput),
-                                         cmNinjaDeps(1, targetOutputReal),
-                                         emptyDeps,
-                                         emptyDeps,
-                                         symlinkVars);
+                                  "CMAKE_SYMLINK_EXECUTABLE",
+                                  cmNinjaDeps(1, targetOutput),
+                                  cmNinjaDeps(1, targetOutputReal),
+                                  emptyDeps,
+                                  emptyDeps,
+                                  symlinkVars);
     } else {
       cmNinjaDeps symlinks;
       const std::string soName = this->GetTargetFilePath(this->TargetNameSO);
@@ -590,30 +622,30 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement()
         symlinks.push_back(soName);
       }
       symlinks.push_back(targetOutput);
-      cmGlobalNinjaGenerator::WriteBuild(this->GetBuildFileStream(),
-                                      "Create library symlink " + targetOutput,
-                                         "CMAKE_SYMLINK_LIBRARY",
-                                         symlinks,
-                                         cmNinjaDeps(1, targetOutputReal),
-                                         emptyDeps,
-                                         emptyDeps,
-                                         symlinkVars);
+      globalGenerator->WriteBuild(this->GetBuildFileStream(),
+                                  "Create library symlink " + targetOutput,
+                                     "CMAKE_SYMLINK_LIBRARY",
+                                  symlinks,
+                                  cmNinjaDeps(1, targetOutputReal),
+                                  emptyDeps,
+                                  emptyDeps,
+                                  symlinkVars);
     }
   }
 
   if (!this->TargetNameImport.empty()) {
     // Since using multiple outputs would mess up the $out variable, use an
     // alias for the import library.
-    cmGlobalNinjaGenerator::WritePhonyBuild(this->GetBuildFileStream(),
-                                            "Alias for import library.",
-                                            cmNinjaDeps(1, targetOutputImplib),
-                                            cmNinjaDeps(1, targetOutputReal));
+    globalGenerator->WritePhonyBuild(this->GetBuildFileStream(),
+                                     "Alias for import library.",
+                                     cmNinjaDeps(1, targetOutputImplib),
+                                     cmNinjaDeps(1, targetOutputReal));
   }
 
   // Add aliases for the file name and the target name.
-  this->GetGlobalGenerator()->AddTargetAlias(this->TargetNameOut,
+  globalGenerator->AddTargetAlias(this->TargetNameOut,
                                              this->GetTarget());
-  this->GetGlobalGenerator()->AddTargetAlias(this->GetTargetName(),
+  globalGenerator->AddTargetAlias(this->GetTargetName(),
                                              this->GetTarget());
 }
 
@@ -624,11 +656,11 @@ void cmNinjaNormalTargetGenerator::WriteObjectLibStatement()
   cmNinjaDeps outputs;
   this->GetLocalGenerator()->AppendTargetOutputs(this->GetTarget(), outputs);
   cmNinjaDeps depends = this->GetObjects();
-  cmGlobalNinjaGenerator::WritePhonyBuild(this->GetBuildFileStream(),
-                                          "Object library "
-                                          + this->GetTargetName(),
-                                          outputs,
-                                          depends);
+  this->GetGlobalGenerator()->WritePhonyBuild(this->GetBuildFileStream(),
+                                              "Object library "
+                                                + this->GetTargetName(),
+                                              outputs,
+                                              depends);
 
   // Add aliases for the target name.
   this->GetGlobalGenerator()->AddTargetAlias(this->GetTargetName(),

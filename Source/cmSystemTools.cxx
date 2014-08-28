@@ -52,7 +52,6 @@
 #endif
 
 #if defined(CMAKE_BUILD_WITH_CMAKE)
-#  include <memory> // auto_ptr
 #  include <fcntl.h>
 #  include "cmCryptoHash.h"
 #endif
@@ -204,13 +203,13 @@ std::string cmSystemTools::EscapeQuotes(const char* str)
 std::string cmSystemTools::TrimWhitespace(const std::string& s)
 {
   std::string::const_iterator start = s.begin();
-  while(start != s.end() && *start == ' ')
+  while(start != s.end() && *start <= ' ')
     ++start;
   if (start == s.end())
     return "";
 
   std::string::const_iterator stop = s.end()-1;
-  while(*stop == ' ')
+  while(*stop <= ' ')
     --stop;
   return std::string(start, stop+1);
 }
@@ -639,6 +638,12 @@ bool cmSystemTools::RunSingleCommand(std::vector<cmStdString>const& command,
     cmsysProcess_SetOption(cp, cmsysProcess_Option_HideWindow, 1);
     }
 
+  if (outputflag == OUTPUT_PASSTHROUGH)
+    {
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDOUT, 1);
+    cmsysProcess_SetPipeShared(cp, cmsysProcess_Pipe_STDERR, 1);
+    }
+
   cmsysProcess_SetTimeout(cp, timeout);
   cmsysProcess_Execute(cp);
 
@@ -646,7 +651,7 @@ bool cmSystemTools::RunSingleCommand(std::vector<cmStdString>const& command,
   char* data;
   int length;
   int pipe;
-  if ( output || outputflag != OUTPUT_NONE )
+  if(outputflag != OUTPUT_PASSTHROUGH && (output || outputflag != OUTPUT_NONE))
     {
     while((pipe = cmsysProcess_WaitForData(cp, &data, &length, 0)) > 0)
       {
@@ -1181,46 +1186,35 @@ bool cmSystemTools::CopyFileIfDifferent(const char* source,
 bool cmSystemTools::RenameFile(const char* oldname, const char* newname)
 {
 #ifdef _WIN32
-  /* On Windows the move functions will not replace existing files.
-     Check if the destination exists.  */
-  struct stat newFile;
-  if(stat(newname, &newFile) == 0)
+# ifndef INVALID_FILE_ATTRIBUTES
+#  define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
+# endif
+  /* Windows MoveFileEx may not replace read-only or in-use files.  If it
+     fails then remove the read-only attribute from any existing destination.
+     Try multiple times since we may be racing against another process
+     creating/opening the destination file just before our MoveFileEx.  */
+  int tries = 5;
+  while(!MoveFileEx(oldname, newname, MOVEFILE_REPLACE_EXISTING) && --tries)
     {
-    /* The destination exists.  We have to replace it carefully.  The
-       MoveFileEx function does what we need but is not available on
-       Win9x.  */
-    OSVERSIONINFO osv;
-    DWORD attrs;
-
-    /* Make sure the destination is not read only.  */
-    attrs = GetFileAttributes(newname);
-    if(attrs & FILE_ATTRIBUTE_READONLY)
+    // Try again only if failure was due to access permissions.
+    if(GetLastError() != ERROR_ACCESS_DENIED)
       {
-      SetFileAttributes(newname, attrs & ~FILE_ATTRIBUTE_READONLY);
+      return false;
       }
-
-    /* Check the windows version number.  */
-    osv.dwOSVersionInfoSize = sizeof(osv);
-    GetVersionEx(&osv);
-    if(osv.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS)
+    DWORD attrs = GetFileAttributes(newname);
+    if((attrs != INVALID_FILE_ATTRIBUTES) &&
+       (attrs & FILE_ATTRIBUTE_READONLY))
       {
-      /* This is Win9x.  There is no MoveFileEx implementation.  We
-         cannot quite rename the file atomically.  Just delete the
-         destination and then move the file.  */
-      DeleteFile(newname);
-      return MoveFile(oldname, newname) != 0;
+      // Remove the read-only attribute from the destination file.
+      SetFileAttributes(newname, attrs & ~FILE_ATTRIBUTE_READONLY);
       }
     else
       {
-      /* This is not Win9x.  Use the MoveFileEx implementation.  */
-      return MoveFileEx(oldname, newname, MOVEFILE_REPLACE_EXISTING) != 0;
+      // The file may be temporarily in use so wait a bit.
+      cmSystemTools::Delay(100);
       }
     }
-  else
-    {
-    /* The destination does not exist.  Just move the file.  */
-    return MoveFile(oldname, newname) != 0;
-    }
+  return tries > 0;
 #else
   /* On UNIX we have an OS-provided call to do this atomically.  */
   return rename(oldname, newname) == 0;
@@ -1606,6 +1600,40 @@ std::string cmSystemTools::RelativePath(const char* local, const char* remote)
   return cmsys::SystemTools::RelativePath(local, remote);
 }
 
+std::string cmSystemTools::CollapseCombinedPath(std::string const& dir,
+                                                std::string const& file)
+{
+  if(dir.empty() || dir == ".")
+    {
+    return file;
+    }
+
+  std::vector<std::string> dirComponents;
+  std::vector<std::string> fileComponents;
+  cmSystemTools::SplitPath(dir.c_str(), dirComponents);
+  cmSystemTools::SplitPath(file.c_str(), fileComponents);
+
+  if(fileComponents.empty())
+    {
+    return dir;
+    }
+  if(fileComponents[0] != "")
+    {
+    // File is not a relative path.
+    return file;
+    }
+
+  std::vector<std::string>::iterator i = fileComponents.begin()+1;
+  while(i != fileComponents.end() && *i == ".." && dirComponents.size() > 1)
+    {
+    ++i; // Remove ".." file component.
+    dirComponents.pop_back(); // Remove last dir component.
+    }
+
+  dirComponents.insert(dirComponents.end(), i, fileComponents.end());
+  return cmSystemTools::JoinPath(dirComponents);
+}
+
 #ifdef CMAKE_BUILD_WITH_CMAKE
 //----------------------------------------------------------------------
 bool cmSystemTools::UnsetEnv(const char* value)
@@ -1674,6 +1702,7 @@ cmSystemTools::SaveRestoreEnvironment::~SaveRestoreEnvironment()
 
 void cmSystemTools::EnableVSConsoleOutput()
 {
+#ifdef _WIN32
   // Visual Studio 8 2005 (devenv.exe or VCExpress.exe) will not
   // display output to the console unless this environment variable is
   // set.  We need it to capture the output of these build tools.
@@ -1681,8 +1710,15 @@ void cmSystemTools::EnableVSConsoleOutput()
   // either of these executables where NAME is created with
   // CreateNamedPipe.  This would bypass the internal buffering of the
   // output and allow it to be captured on the fly.
-#ifdef _WIN32
   cmSystemTools::PutEnv("vsconsoleoutput=1");
+
+# ifdef CMAKE_BUILD_WITH_CMAKE
+  // VS sets an environment variable to tell MS tools like "cl" to report
+  // output through a backdoor pipe instead of stdout/stderr.  Unset the
+  // environment variable to close this backdoor for any path of process
+  // invocations that passes through CMake so we can capture the output.
+  cmSystemTools::UnsetEnv("VS_UNICODE_OUTPUT");
+# endif
 #endif
 }
 
@@ -1932,6 +1968,7 @@ bool extract_tar(const char* outFileName, bool verbose,
       {
       cmSystemTools::Error("Problem with archive_read_next_header(): ",
                            archive_error_string(a));
+      break;
       }
     if (verbose && extract)
       {
@@ -1954,6 +1991,7 @@ bool extract_tar(const char* outFileName, bool verbose,
         cmSystemTools::Error(
           "Problem with archive_write_disk_set_options(): ",
           archive_error_string(ext));
+        break;
         }
 
       r = archive_write_header(ext, entry);
@@ -1961,8 +1999,9 @@ bool extract_tar(const char* outFileName, bool verbose,
         {
         cmSystemTools::Error("Problem with archive_write_header(): ",
                              archive_error_string(ext));
-        cmSystemTools::Error("Current file:",
+        cmSystemTools::Error("Current file: ",
                              archive_entry_pathname(entry));
+        break;
         }
       else
         {
@@ -1972,6 +2011,7 @@ bool extract_tar(const char* outFileName, bool verbose,
           {
           cmSystemTools::Error("Problem with archive_write_finish_entry(): ",
                                archive_error_string(ext));
+          break;
           }
         }
       }
@@ -1982,8 +2022,7 @@ bool extract_tar(const char* outFileName, bool verbose,
     }
   archive_read_close(a);
   archive_read_finish(a);
-  return true;
-
+  return r == ARCHIVE_EOF || r == ARCHIVE_OK;
 }
 }
 #endif
@@ -2422,6 +2461,38 @@ bool cmSystemTools::GuessLibrarySOName(std::string const& fullPath,
 }
 
 //----------------------------------------------------------------------------
+bool cmSystemTools::GuessLibraryInstallName(std::string const& fullPath,
+                                       std::string& soname)
+{
+  std::vector<cmStdString> cmds;
+  cmds.push_back("otool");
+  cmds.push_back("-D");
+  cmds.push_back(fullPath.c_str());
+
+  std::string output;
+  if(!RunSingleCommand(cmds, &output, 0, 0, OUTPUT_NONE))
+    {
+    cmds.insert(cmds.begin(), "-r");
+    cmds.insert(cmds.begin(), "xcrun");
+    if(!RunSingleCommand(cmds, &output, 0, 0, OUTPUT_NONE))
+      {
+      return false;
+      }
+    }
+
+  std::vector<std::string> strs = cmSystemTools::tokenize(output, "\n");
+  // otool returns extra lines reporting multiple install names
+  // in case the binary is multi-arch and none of the architectures
+  // is native (e.g. i386;ppc on x86_64)
+  if(strs.size() >= 2)
+    {
+    soname = strs[1];
+    return true;
+    }
+  return false;
+}
+
+//----------------------------------------------------------------------------
 #if defined(CMAKE_USE_ELF_PARSER)
 std::string::size_type cmSystemToolsFindRPath(std::string const& have,
                                               std::string const& want)
@@ -2668,13 +2739,18 @@ bool cmSystemTools::ChangeRPath(std::string const& file,
 bool cmSystemTools::VersionCompare(cmSystemTools::CompareOp op,
                                    const char* lhss, const char* rhss)
 {
-  unsigned int lhs[4] = {0,0,0,0};
-  unsigned int rhs[4] = {0,0,0,0};
-  sscanf(lhss, "%u.%u.%u.%u", &lhs[0], &lhs[1], &lhs[2], &lhs[3]);
-  sscanf(rhss, "%u.%u.%u.%u", &rhs[0], &rhs[1], &rhs[2], &rhs[3]);
+  // Parse out up to 8 components.
+  unsigned int lhs[8] = {0,0,0,0,0,0,0,0};
+  unsigned int rhs[8] = {0,0,0,0,0,0,0,0};
+  sscanf(lhss, "%u.%u.%u.%u.%u.%u.%u.%u",
+         &lhs[0], &lhs[1], &lhs[2], &lhs[3],
+         &lhs[4], &lhs[5], &lhs[6], &lhs[7]);
+  sscanf(rhss, "%u.%u.%u.%u.%u.%u.%u.%u",
+         &rhs[0], &rhs[1], &rhs[2], &rhs[3],
+         &rhs[4], &rhs[5], &rhs[6], &rhs[7]);
 
   // Do component-wise comparison.
-  for(unsigned int i=0; i < 4; ++i)
+  for(unsigned int i=0; i < 8; ++i)
     {
     if(lhs[i] < rhs[i])
       {

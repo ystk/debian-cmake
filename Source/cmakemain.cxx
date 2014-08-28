@@ -62,7 +62,10 @@ static const char * cmDocumentationDescription[][3] =
   "  --config <cfg> = For multi-configuration tools, choose <cfg>.\n"   \
   "  --clean-first  = Build target 'clean' first, then build.\n"        \
   "                   (To clean only, use --target 'clean'.)\n"         \
-  "  --use-stderr  =  Don't merge stdout/stderr.\n"                     \
+  "  --use-stderr   = Don't merge stdout/stderr output and pass the\n"  \
+  "                   original stdout/stderr handles to the native\n"   \
+  "                   tool so it can use the capabilities of the\n"     \
+  "                   calling terminal (e.g. colored output).\n"        \
   "  --             = Pass remaining options to the native tool.\n"
 
 //----------------------------------------------------------------------------
@@ -86,8 +89,8 @@ static const char * cmDocumentationOptions[][3] =
   {"-L[A][H]", "List non-advanced cached variables.",
    "List cache variables will run CMake and list all the variables from the "
    "CMake cache that are not marked as INTERNAL or ADVANCED. This will "
-   "effectively display current CMake settings, which can be then changed "
-   "with -D option. Changing some of the variable may result in more "
+   "effectively display current CMake settings, which can then be changed "
+   "with -D option. Changing some of the variables may result in more "
    "variables being created. If A is specified, then it will display also "
    "advanced variables. If H is specified, it will also display help for "
    "each variable."},
@@ -108,9 +111,11 @@ static const char * cmDocumentationOptions[][3] =
    "to stdout. This can be used to use cmake instead of pkg-config to find "
    "installed libraries in plain Makefile-based projects or in "
    "autoconf-based projects (via share/aclocal/cmake.m4)."},
-  {"--graphviz=[file]", "Generate graphviz of dependencies.",
+  {"--graphviz=[file]", "Generate graphviz of dependencies, see "
+   "CMakeGraphVizOptions.cmake for more.",
    "Generate a graphviz input file that will contain all the library and "
-   "executable dependencies in the project."},
+   "executable dependencies in the project. See the documentation for "
+   "CMakeGraphVizOptions.cmake for more details. "},
   {"--system-information [file]", "Dump information about this system.",
    "Dump a wide range of information about the current system. If run "
    "from the top of a binary tree for a CMake project it will dump "
@@ -152,7 +157,7 @@ static const char * cmDocumentationOptions[][3] =
    "format is determined depending on the filename suffix. Supported are man "
    "page, HTML, DocBook and plain text."},
   {"--help-commands [file]", "Print help for all commands and exit.",
-   "Full documentation specific for all current command is displayed."
+   "Full documentation specific for all current commands is displayed."
    "If a file is specified, the documentation is written into and the output "
    "format is determined depending on the filename suffix. Supported are man "
    "page, HTML, DocBook and plain text."},
@@ -344,19 +349,17 @@ int main(int ac, char** av)
 
 int do_cmake(int ac, char** av)
 {
-  int nocwd = 0;
-
   if ( cmSystemTools::GetCurrentWorkingDirectory().size() == 0 )
     {
     std::cerr << "Current working directory cannot be established."
               << std::endl;
-    nocwd = 1;
+    return 1;
     }
 
 #ifdef CMAKE_BUILD_WITH_CMAKE
   cmDocumentation doc;
   doc.addCMakeStandardDocSections();
-  if(doc.CheckOptions(ac, av, "-E") || nocwd)
+  if(doc.CheckOptions(ac, av, "-E"))
     {
     // Construct and print requested documentation.
     cmake hcm;
@@ -424,7 +427,7 @@ int do_cmake(int ac, char** av)
     return result;
     }
 #else
-  if ( nocwd || ac == 1 )
+  if ( ac == 1 )
     {
     std::cout <<
       "Bootstrap CMake should not be used outside CMake build process."
@@ -606,7 +609,7 @@ static int do_build(int ac, char** av)
       }
     else if(strcmp(av[i], "--use-stderr") == 0)
       {
-        outputflag = cmSystemTools::OUTPUT_NORMAL;
+      outputflag = cmSystemTools::OUTPUT_PASSTHROUGH;
       }
     else if(strcmp(av[i], "--") == 0)
       {

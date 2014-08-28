@@ -61,9 +61,9 @@ cmLocalGenerator *cmGlobalUnixMakefileGenerator3::CreateLocalGenerator()
 
 //----------------------------------------------------------------------------
 void cmGlobalUnixMakefileGenerator3
-::GetDocumentation(cmDocumentationEntry& entry) const
+::GetDocumentation(cmDocumentationEntry& entry)
 {
-  entry.Name = this->GetName();
+  entry.Name = cmGlobalUnixMakefileGenerator3::GetActualName();
   entry.Brief = "Generates standard UNIX makefiles.";
   entry.Full =
     "A hierarchy of UNIX makefiles is generated into the build tree.  Any "
@@ -517,11 +517,13 @@ cmGlobalUnixMakefileGenerator3
 
 std::string cmGlobalUnixMakefileGenerator3
 ::GenerateBuildCommand(const char* makeProgram, const char *projectName,
-                       const char* additionalOptions, const char *targetName,
-                       const char* config, bool ignoreErrors, bool fast)
+                       const char *projectDir, const char* additionalOptions,
+                       const char *targetName, const char* config,
+                       bool ignoreErrors, bool fast)
 {
-  // Project name and config are not used yet.
+  // Project name & dir and config are not used yet.
   (void)projectName;
+  (void)projectDir;
   (void)config;
 
   std::string makeCommand =
