@@ -1,3 +1,71 @@
+cmake (3.0.2-1) unstable; urgency=medium
+
+  * New upstream release.
+    - Adds support for OpenRISC (or1k). (Closes: #749004)
+  * Detect the processor when running on Hurd. (Closes: #761060)
+    - Add hurd_host_system_processor.diff, cherry-picked from upstream.
+  * Revert cmake-qt-gui to Qt 4 for now as qtbase 5 fails to build on some
+    architectures.
+
+ -- Felix Geyer <fgeyer@debian.org>  Sun, 14 Sep 2014 19:16:38 +0200
+
+cmake (3.0.1-1) experimental; urgency=medium
+
+  * New upstream release.
+  * Drop patches (fixed upstream):
+    - fix-bootstrap-test-1.diff
+    - fix-bootstrap-test-2.diff
+
+ -- Felix Geyer <fgeyer@debian.org>  Sat, 09 Aug 2014 21:11:50 +0200
+
+cmake (3.0.0-1) experimental; urgency=medium
+
+  * New upstream release. (Closes: #743231)
+    - Uses multiarch libdir only when prefix is /usr. (Closes:  #739876)
+    - Doesn't crash on bad generator name. (Closes: #747306)
+    - Provides a FindLua module that supports versions 5.0 - 5.3.
+      (Closes: #739285)
+    - Fixes parsing CMakeLists.txt in UTF-8 with BOM encoding. (Closes: #593327)
+    - Call cmake-gui for edit_cache when using the ninja generator.
+      (Closes: #712241)
+  * Drop patches (fixed upstream):
+    - install_to_multiarch_libdir_on_kfreebsd_hurd.diff
+    - FindPHP4_fix_typo.diff
+    - FindJNI_amd64_ppc_biarch.diff
+    - fix-FindFreetype.diff
+    - FindRuby_support_Ruby_2.diff
+    - fix-FindFreetype-version.diff
+  * Refresh patches:
+    - FindJNI.cmake.mips.patch
+    - FindJNI_ppc64le.diff
+  * Fix running the test suite.
+    - Cherry-pick upstream fix in fix-bootstrap-test-1.diff and
+      fix-bootstrap-test-2.diff
+  * Build the sphinx documentation and man pages.
+    - Build-depend on python-sphinx.
+  * Update install files.
+  * Pass --list-missing to dh_install.
+  * Use sphinxdoc debhelper sequence.
+  * Add -Wl,--as-needed to LDFLAGS to avoid overlinking.
+  * Drop custom cmake-gui manpage, upstream provides one now.
+  * Build cmake-qt-gui against Qt 5.
+  * Drop obsolete lintian override cmake-data: extra-license-file.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Update debian/copyright.
+
+ -- Felix Geyer <fgeyer@debian.org>  Thu, 07 Aug 2014 23:38:00 +0200
+
+cmake (2.8.12.2-2) unstable; urgency=high
+
+  * Search for Python 3.4 in FindPython{Interp,Libs}.
+    - Add search_for_python3.4.diff
+  * Don't create docs symlinks from arch-dep to arch-indep packages.
+    (Closes: #760823)
+  * Move the rm_conffile calls to cmake.maintscript.
+
+ -- Felix Geyer <fgeyer@debian.org>  Mon, 08 Sep 2014 22:18:32 +0200
+
 cmake (2.8.12.2-1) unstable; urgency=medium
 
   [ Felix Geyer ]

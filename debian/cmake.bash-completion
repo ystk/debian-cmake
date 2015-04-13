@@ -1,3 +1,3 @@
-debian/tmp/usr/share/cmake-2.8/completions/cmake
-debian/tmp/usr/share/cmake-2.8/completions/cpack
-debian/tmp/usr/share/cmake-2.8/completions/ctest
+debian/tmp/usr/share/cmake-3.0/completions/cmake
+debian/tmp/usr/share/cmake-3.0/completions/cpack
+debian/tmp/usr/share/cmake-3.0/completions/ctest

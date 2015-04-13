@@ -1,14 +1,9 @@
 FindBoost_add_-lpthread_#563479.diff
-install_to_multiarch_libdir_on_kfreebsd_hurd.diff
 qt_import_dir_variable.diff
-FindPHP4_fix_typo.diff
-FindJNI_amd64_ppc_biarch.diff
 fix-ftbfs-on-kfreebsd.patch
-fix-FindFreetype.diff
-FindRuby_support_Ruby_2.diff
 FindJNI.cmake.mips.patch
 fix-FindImageMagick-1.diff
 fix-FindImageMagick-2.diff
-fix-FindFreetype-version.diff
 fix-hdf5-hl.patch
 FindJNI_ppc64le.diff
+hurd_host_system_processor.diff
